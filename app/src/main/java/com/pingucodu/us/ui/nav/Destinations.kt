@@ -7,9 +7,6 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.ui.graphics.vector.ImageVector
 
-const val LOGIN_ROUTE = "login"
-const val MAIN_ROUTE = "main"
-
 /** The 4 bottom-nav tabs, in display order. */
 enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     Home("home", "home", Icons.Filled.Home),
