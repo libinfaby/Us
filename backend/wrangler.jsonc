@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pingu-codu-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-11",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Filled in after running `npx wrangler d1 create pingu-codu-db` (Phase 3 step 2).
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pingu-codu-db",
+      "database_id": "a3d141bb-af71-4571-9bbe-a9650aaeb1a5"
+    }
+  ]
+}
