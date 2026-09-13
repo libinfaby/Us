@@ -69,4 +69,22 @@ interface ApiService {
         @Header("Authorization") bearerToken: String,
         @Body request: CreateHangoutRequest,
     ): Response<HangoutDto>
+
+    @GET("cycle/status")
+    suspend fun getCycleStatus(@Header("Authorization") bearerToken: String): Response<CycleStatusDto>
+
+    @GET("cycle/logs")
+    suspend fun getCycleLogs(@Header("Authorization") bearerToken: String): Response<List<CycleLogDto>>
+
+    @POST("cycle/logs")
+    suspend fun createCycleLog(
+        @Header("Authorization") bearerToken: String,
+        @Body request: CreateCycleLogRequest,
+    ): Response<CycleLogDto>
+
+    @DELETE("cycle/logs/{id}")
+    suspend fun deleteCycleLog(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+    ): Response<Unit>
 }

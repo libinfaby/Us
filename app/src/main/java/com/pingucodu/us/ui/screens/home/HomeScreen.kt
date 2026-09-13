@@ -92,7 +92,8 @@ fun HomeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             FeatureTeaserCard(
                 label = "CYCLE",
-                title = "not tracked yet",
+                title = uiState.cycleStatus?.currentDay?.let { "day $it" } ?: "not tracked yet",
+                subtitle = uiState.cycleStatus?.takeIf { it.currentDay != null }?.statusLabel,
                 color = Teal,
                 modifier = Modifier.weight(1f),
                 onClick = onNavigateToCycle,
@@ -158,6 +159,7 @@ private fun FeatureTeaserCard(
     title: String,
     color: Color,
     modifier: Modifier = Modifier,
+    subtitle: String? = null,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -171,6 +173,10 @@ private fun FeatureTeaserCard(
         Text(label, style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.height(6.dp))
         Text(title, style = MaterialTheme.typography.titleMedium)
+        if (subtitle != null) {
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
