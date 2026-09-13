@@ -14,3 +14,6 @@ enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     Cycle("cycle", "cycle", Icons.Filled.CalendarMonth),
     Stash("stash", "stash", Icons.Filled.Bookmark),
 }
+
+/** Routes reachable from within the main screen that aren't bottom-nav tabs. */
+const val CHANGE_PIN_ROUTE = "change_pin"

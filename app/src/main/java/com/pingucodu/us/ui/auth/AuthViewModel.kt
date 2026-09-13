@@ -3,6 +3,7 @@ package com.pingucodu.us.ui.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pingucodu.us.data.auth.AuthRepository
+import com.pingucodu.us.data.auth.ChangePinResult
 import com.pingucodu.us.data.auth.LoginResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,12 @@ sealed interface AuthStatus {
 }
 
 data class LoginUiState(val isLoading: Boolean = false, val errorMessage: String? = null)
+
+data class ChangePinUiState(
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+    val success: Boolean = false,
+)
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(private val repository: AuthRepository) : ViewModel() {
@@ -46,5 +53,23 @@ class AuthViewModel @Inject constructor(private val repository: AuthRepository) 
 
     fun logout() {
         viewModelScope.launch { repository.logout() }
+    }
+
+    private val _changePinUiState = MutableStateFlow(ChangePinUiState())
+    val changePinUiState: StateFlow<ChangePinUiState> = _changePinUiState.asStateFlow()
+
+    fun changePin(currentPin: String, newPin: String) {
+        _changePinUiState.value = ChangePinUiState(isLoading = true)
+        viewModelScope.launch {
+            _changePinUiState.value = when (val result = repository.changePin(currentPin, newPin)) {
+                ChangePinResult.Success -> ChangePinUiState(success = true)
+                ChangePinResult.WrongCurrentPin -> ChangePinUiState(errorMessage = "current pin is incorrect")
+                is ChangePinResult.NetworkError -> ChangePinUiState(errorMessage = result.message)
+            }
+        }
+    }
+
+    fun resetChangePinState() {
+        _changePinUiState.value = ChangePinUiState()
     }
 }
