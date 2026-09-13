@@ -194,10 +194,10 @@ private fun BalanceHeaderCard(
     val myNet = currentUsername?.let { net[it] } ?: 0
     val other = net.keys.firstOrNull { it != currentUsername }
 
-    val (text, color) = when {
-        myNet == 0L || other == null -> "all settled up" to Ink
-        myNet > 0 -> "$other owes you ${formatCents(myNet)}" to Green
-        else -> "you owe $other ${formatCents(-myNet)}" to Coral
+    val text = when {
+        myNet == 0L || other == null -> "all settled up"
+        myNet > 0 -> "$other owes you ${formatCents(myNet)}"
+        else -> "you owe $other ${formatCents(-myNet)}"
     }
 
     Row(
@@ -212,7 +212,7 @@ private fun BalanceHeaderCard(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text("OPEN BALANCE", style = MaterialTheme.typography.labelMedium)
-            Text(text, style = MaterialTheme.typography.titleLarge, color = color)
+            Text(text, style = MaterialTheme.typography.titleLarge, color = Ink)
         }
         if (showSettleAll && myNet != 0L) {
             Button(

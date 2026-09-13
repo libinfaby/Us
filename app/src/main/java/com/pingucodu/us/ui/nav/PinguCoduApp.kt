@@ -57,6 +57,14 @@ private fun MainScreen(username: String) {
     val currentRoute = backStackEntry?.destination?.route
     val isTabRoute = Tab.entries.any { it.route == currentRoute }
 
+    fun navigateToTab(tab: Tab) {
+        navController.navigate(tab.route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     Scaffold(
         topBar = {
             if (isTabRoute) {
@@ -76,13 +84,7 @@ private fun MainScreen(username: String) {
                     Tab.entries.forEach { tab ->
                         NavigationBarItem(
                             selected = currentRoute == tab.route,
-                            onClick = {
-                                navController.navigate(tab.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
+                            onClick = { navigateToTab(tab) },
                             icon = { Icon(tab.icon, contentDescription = tab.label) },
                             label = { Text(tab.label) },
                         )
@@ -96,7 +98,13 @@ private fun MainScreen(username: String) {
             startDestination = Tab.Home.route,
             modifier = Modifier.padding(innerPadding),
         ) {
-            composable(Tab.Home.route) { HomeScreen() }
+            composable(Tab.Home.route) {
+                HomeScreen(
+                    onNavigateToMoney = { navigateToTab(Tab.Money) },
+                    onNavigateToCycle = { navigateToTab(Tab.Cycle) },
+                    onNavigateToStash = { navigateToTab(Tab.Stash) },
+                )
+            }
             composable(Tab.Money.route) { MoneyScreen() }
             composable(Tab.Cycle.route) { CycleScreen() }
             composable(Tab.Stash.route) { StashScreen() }
