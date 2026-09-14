@@ -100,7 +100,8 @@ fun HomeScreen(
             )
             FeatureTeaserCard(
                 label = "STASH",
-                title = "not tracked yet",
+                title = "${uiState.stashSavedCount} saved",
+                subtitle = if (uiState.stashTodoCount > 0) "${uiState.stashTodoCount} to-dos pending" else null,
                 color = Yellow,
                 modifier = Modifier.weight(1f),
                 onClick = onNavigateToStash,

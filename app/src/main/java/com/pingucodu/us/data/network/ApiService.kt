@@ -87,4 +87,36 @@ interface ApiService {
         @Header("Authorization") bearerToken: String,
         @Path("id") id: String,
     ): Response<Unit>
+
+    @GET("stash")
+    suspend fun getStash(
+        @Header("Authorization") bearerToken: String,
+        @Query("status") status: String? = null,
+        @Query("type") type: String? = null,
+    ): Response<List<StashItemDto>>
+
+    @POST("stash")
+    suspend fun createStashItem(
+        @Header("Authorization") bearerToken: String,
+        @Body request: StashItemRequest,
+    ): Response<StashItemDto>
+
+    @PATCH("stash/{id}")
+    suspend fun updateStashItem(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+        @Body request: StashItemRequest,
+    ): Response<StashItemDto>
+
+    @POST("stash/{id}/toggle")
+    suspend fun toggleStashItem(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+    ): Response<StashItemDto>
+
+    @DELETE("stash/{id}")
+    suspend fun deleteStashItem(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+    ): Response<Unit>
 }

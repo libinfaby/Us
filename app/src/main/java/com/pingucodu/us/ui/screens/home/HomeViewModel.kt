@@ -9,6 +9,8 @@ import com.pingucodu.us.data.money.BalanceResult
 import com.pingucodu.us.data.money.ExpenseRepository
 import com.pingucodu.us.data.money.ExpensesResult
 import com.pingucodu.us.data.network.CycleStatusDto
+import com.pingucodu.us.data.stash.StashItemsResult
+import com.pingucodu.us.data.stash.StashRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.async
@@ -26,6 +28,8 @@ data class HomeUiState(
     val net: Map<String, Long> = emptyMap(),
     val openExpenseCount: Int = 0,
     val cycleStatus: CycleStatusDto? = null,
+    val stashSavedCount: Int = 0,
+    val stashTodoCount: Int = 0,
     val errorMessage: String? = null,
 )
 
@@ -33,6 +37,7 @@ data class HomeUiState(
 class HomeViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
     private val cycleRepository: CycleRepository,
+    private val stashRepository: StashRepository,
     private val authRepository: AuthRepository,
 ) : ViewModel() {
 
@@ -51,22 +56,27 @@ class HomeViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            val (expensesResult, balanceResult, cycleResult) = coroutineScope {
+            val (expensesResult, balanceResult, cycleResult, stashResult) = coroutineScope {
                 val expensesDeferred = async { expenseRepository.getExpenses(status = "open") }
                 val balanceDeferred = async { expenseRepository.getBalance() }
                 val cycleDeferred = async { cycleRepository.getStatus() }
-                Triple(expensesDeferred.await(), balanceDeferred.await(), cycleDeferred.await())
+                val stashDeferred = async { stashRepository.getItems(status = "saved") }
+                listOf(expensesDeferred.await(), balanceDeferred.await(), cycleDeferred.await(), stashDeferred.await())
             }
             _uiState.update { state ->
                 val error = (expensesResult as? ExpensesResult.NetworkError)?.message
                     ?: (balanceResult as? BalanceResult.NetworkError)?.message
                     ?: (cycleResult as? CycleStatusResult.NetworkError)?.message
+                    ?: (stashResult as? StashItemsResult.NetworkError)?.message
+                val stashItems = (stashResult as? StashItemsResult.Success)?.items
                 state.copy(
                     isLoading = false,
                     openExpenseCount = (expensesResult as? ExpensesResult.Success)?.expenses?.size
                         ?: state.openExpenseCount,
                     net = (balanceResult as? BalanceResult.Success)?.net ?: state.net,
                     cycleStatus = (cycleResult as? CycleStatusResult.Success)?.status ?: state.cycleStatus,
+                    stashSavedCount = stashItems?.size ?: state.stashSavedCount,
+                    stashTodoCount = stashItems?.count { it.type == "todo" } ?: state.stashTodoCount,
                     errorMessage = error,
                 )
             }
