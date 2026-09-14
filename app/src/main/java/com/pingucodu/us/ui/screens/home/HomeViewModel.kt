@@ -9,10 +9,10 @@ import com.pingucodu.us.data.money.BalanceResult
 import com.pingucodu.us.data.money.ExpenseRepository
 import com.pingucodu.us.data.money.ExpensesResult
 import com.pingucodu.us.data.network.CycleStatusDto
+import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.stash.StashItemsResult
 import com.pingucodu.us.data.stash.StashRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +20,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
+
+enum class ActivitySource { MONEY, CYCLE, STASH }
+
+data class ActivityFeedItem(val source: ActivitySource, val text: String, val timeLabel: String)
 
 data class HomeUiState(
     val isLoading: Boolean = true,
@@ -30,8 +39,11 @@ data class HomeUiState(
     val cycleStatus: CycleStatusDto? = null,
     val stashSavedCount: Int = 0,
     val stashTodoCount: Int = 0,
+    val activityFeed: List<ActivityFeedItem> = emptyList(),
     val errorMessage: String? = null,
 )
+
+private val SQLITE_DATETIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -60,7 +72,7 @@ class HomeViewModel @Inject constructor(
                 val expensesDeferred = async { expenseRepository.getExpenses(status = "open") }
                 val balanceDeferred = async { expenseRepository.getBalance() }
                 val cycleDeferred = async { cycleRepository.getStatus() }
-                val stashDeferred = async { stashRepository.getItems(status = "saved") }
+                val stashDeferred = async { stashRepository.getItems(status = "everything") }
                 listOf(expensesDeferred.await(), balanceDeferred.await(), cycleDeferred.await(), stashDeferred.await())
             }
             _uiState.update { state ->
@@ -68,15 +80,19 @@ class HomeViewModel @Inject constructor(
                     ?: (balanceResult as? BalanceResult.NetworkError)?.message
                     ?: (cycleResult as? CycleStatusResult.NetworkError)?.message
                     ?: (stashResult as? StashItemsResult.NetworkError)?.message
+                val openExpenseCount = (expensesResult as? ExpensesResult.Success)?.expenses?.size
+                    ?: state.openExpenseCount
+                val cycleStatus = (cycleResult as? CycleStatusResult.Success)?.status ?: state.cycleStatus
                 val stashItems = (stashResult as? StashItemsResult.Success)?.items
                 state.copy(
                     isLoading = false,
-                    openExpenseCount = (expensesResult as? ExpensesResult.Success)?.expenses?.size
-                        ?: state.openExpenseCount,
+                    openExpenseCount = openExpenseCount,
                     net = (balanceResult as? BalanceResult.Success)?.net ?: state.net,
-                    cycleStatus = (cycleResult as? CycleStatusResult.Success)?.status ?: state.cycleStatus,
-                    stashSavedCount = stashItems?.size ?: state.stashSavedCount,
-                    stashTodoCount = stashItems?.count { it.type == "todo" } ?: state.stashTodoCount,
+                    cycleStatus = cycleStatus,
+                    stashSavedCount = stashItems?.count { it.status == "saved" } ?: state.stashSavedCount,
+                    stashTodoCount = stashItems?.count { it.type == "todo" && it.status == "saved" }
+                        ?: state.stashTodoCount,
+                    activityFeed = buildActivityFeed(openExpenseCount, cycleStatus, stashItems),
                     errorMessage = error,
                 )
             }
@@ -85,5 +101,36 @@ class HomeViewModel @Inject constructor(
 
     fun logout() {
         viewModelScope.launch { authRepository.logout() }
+    }
+
+    private fun buildActivityFeed(
+        openExpenseCount: Int,
+        cycleStatus: CycleStatusDto?,
+        stashItems: List<StashItemDto>?,
+    ): List<ActivityFeedItem> = buildList {
+        if (openExpenseCount > 0) {
+            val plural = if (openExpenseCount == 1) "expense" else "expenses"
+            add(ActivityFeedItem(ActivitySource.MONEY, "$openExpenseCount $plural still open", "now"))
+        }
+        if (cycleStatus?.currentDay != null) {
+            add(ActivityFeedItem(ActivitySource.CYCLE, "cycle day ${cycleStatus.currentDay} · ${cycleStatus.statusLabel}", "today"))
+        }
+        stashItems?.sortedByDescending { it.createdAt }?.take(4)?.forEach { item ->
+            val text = if (item.type == "todo") item.title else "${item.author} shared \"${item.title}\""
+            add(ActivityFeedItem(ActivitySource.STASH, text, relativeTime(item.createdAt)))
+        }
+    }.take(6)
+
+    private fun relativeTime(sqliteDateTime: String): String = try {
+        val then = LocalDateTime.parse(sqliteDateTime, SQLITE_DATETIME).toInstant(ZoneOffset.UTC)
+        val minutes = Duration.between(then, Instant.now()).toMinutes()
+        when {
+            minutes < 1 -> "now"
+            minutes < 60 -> "${minutes}m"
+            minutes < 60 * 24 -> "${minutes / 60}h"
+            else -> "${minutes / (60 * 24)}d"
+        }
+    } catch (e: Exception) {
+        ""
     }
 }

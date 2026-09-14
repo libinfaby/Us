@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +58,7 @@ fun HomeScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -107,6 +110,62 @@ fun HomeScreen(
                 onClick = onNavigateToStash,
             )
         }
+
+        if (uiState.activityFeed.isNotEmpty()) {
+            Spacer(Modifier.height(20.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("LATEST", style = MaterialTheme.typography.labelMedium)
+                Text("this week", style = MaterialTheme.typography.labelMedium)
+            }
+            Spacer(Modifier.height(8.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(BorderWidth, Ink, RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)),
+            ) {
+                uiState.activityFeed.forEachIndexed { index, item ->
+                    ActivityRow(item)
+                    if (index != uiState.activityFeed.lastIndex) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.5.dp)
+                                .background(Ink.copy(alpha = 0.12f)),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivityRow(item: ActivityFeedItem) {
+    val (color, abbreviation) = when (item.source) {
+        ActivitySource.MONEY -> Pink to "MO"
+        ActivitySource.CYCLE -> Teal to "CY"
+        ActivitySource.STASH -> Yellow to "ST"
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .background(color, RoundedCornerShape(8.dp))
+                .border(1.5.dp, Ink, RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(abbreviation, style = MaterialTheme.typography.labelSmall)
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(item.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(8.dp))
+        Text(item.timeLabel, style = MaterialTheme.typography.labelSmall)
     }
 }
 
