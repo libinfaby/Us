@@ -9,6 +9,7 @@ import com.pingucodu.us.data.money.BalanceResult
 import com.pingucodu.us.data.money.ExpenseRepository
 import com.pingucodu.us.data.money.ExpensesResult
 import com.pingucodu.us.data.network.CycleStatusDto
+import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.stash.StashItemsResult
 import com.pingucodu.us.data.stash.StashRepository
@@ -36,6 +37,7 @@ data class HomeUiState(
     val username: String? = null,
     val net: Map<String, Long> = emptyMap(),
     val openExpenseCount: Int = 0,
+    val recurringExpenses: List<ExpenseDto> = emptyList(),
     val cycleStatus: CycleStatusDto? = null,
     val stashSavedCount: Int = 0,
     val stashTodoCount: Int = 0,
@@ -80,13 +82,14 @@ class HomeViewModel @Inject constructor(
                     ?: (balanceResult as? BalanceResult.NetworkError)?.message
                     ?: (cycleResult as? CycleStatusResult.NetworkError)?.message
                     ?: (stashResult as? StashItemsResult.NetworkError)?.message
-                val openExpenseCount = (expensesResult as? ExpensesResult.Success)?.expenses?.size
-                    ?: state.openExpenseCount
+                val openExpenses = (expensesResult as? ExpensesResult.Success)?.expenses
+                val openExpenseCount = openExpenses?.size ?: state.openExpenseCount
                 val cycleStatus = (cycleResult as? CycleStatusResult.Success)?.status ?: state.cycleStatus
                 val stashItems = (stashResult as? StashItemsResult.Success)?.items
                 state.copy(
                     isLoading = false,
                     openExpenseCount = openExpenseCount,
+                    recurringExpenses = openExpenses?.filter { it.isRecurring } ?: state.recurringExpenses,
                     net = (balanceResult as? BalanceResult.Success)?.net ?: state.net,
                     cycleStatus = cycleStatus,
                     stashSavedCount = stashItems?.count { it.status == "saved" } ?: state.stashSavedCount,

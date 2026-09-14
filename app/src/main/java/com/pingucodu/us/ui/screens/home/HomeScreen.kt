@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.ui.theme.BorderWidth
 import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.Pink
@@ -136,6 +137,54 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+
+        if (uiState.recurringExpenses.isNotEmpty()) {
+            Spacer(Modifier.height(20.dp))
+            Text("ON REPEAT", style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(8.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(BorderWidth, Ink, RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)),
+            ) {
+                uiState.recurringExpenses.forEachIndexed { index, expense ->
+                    RecurringExpenseRow(expense, onClick = onNavigateToMoney)
+                    if (index != uiState.recurringExpenses.lastIndex) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.5.dp)
+                                .background(Ink.copy(alpha = 0.12f)),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecurringExpenseRow(expense: ExpenseDto, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(expense.title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(formatCents(expense.amountCents), style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.width(8.dp))
+        Box(
+            modifier = Modifier
+                .border(1.5.dp, Ink, RoundedCornerShape(50))
+                .background(Pink, RoundedCornerShape(50))
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+        ) {
+            Text(expense.cadence ?: "recurring", style = MaterialTheme.typography.labelSmall)
         }
     }
 }
