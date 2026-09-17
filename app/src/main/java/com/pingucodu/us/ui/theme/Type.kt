@@ -30,10 +30,13 @@ val SpaceGrotesk = FontFamily(
     ),
 )
 
-// Archivo Black only ships one weight (~900) - used for the bold display headings.
-val ArchivoBlack = FontFamily(
-    Font(R.font.archivo_black, weight = FontWeight.Normal),
-    Font(R.font.archivo_black, weight = FontWeight.Bold),
+// Bricolage Grotesque - the design prototype's display/headline face (the "pingu & codu"
+// wordmark). Its default weight already reads chunky at display sizes; ExtraBold matches
+// the prototype's rendered boldness most closely.
+val BricolageGrotesque = FontFamily(
+    Font(R.font.bricolage_grotesque_regular, weight = FontWeight.Normal),
+    Font(R.font.bricolage_grotesque_bold, weight = FontWeight.Bold),
+    Font(R.font.bricolage_grotesque_extrabold, weight = FontWeight.ExtraBold),
 )
 
 // DM Mono - amounts, dates, timestamps.
@@ -43,11 +46,11 @@ val DmMono = FontFamily(
 )
 
 val Typography = Typography(
-    displayLarge = TextStyle(fontFamily = ArchivoBlack, fontWeight = FontWeight.Normal, fontSize = 34.sp, lineHeight = 36.sp, letterSpacing = 0.sp),
-    displayMedium = TextStyle(fontFamily = ArchivoBlack, fontWeight = FontWeight.Normal, fontSize = 28.sp, lineHeight = 30.sp, letterSpacing = 0.sp),
-    headlineLarge = TextStyle(fontFamily = ArchivoBlack, fontWeight = FontWeight.Normal, fontSize = 24.sp, lineHeight = 26.sp, letterSpacing = 0.sp),
-    headlineMedium = TextStyle(fontFamily = ArchivoBlack, fontWeight = FontWeight.Normal, fontSize = 20.sp, lineHeight = 22.sp, letterSpacing = 0.sp),
-    titleLarge = TextStyle(fontFamily = ArchivoBlack, fontWeight = FontWeight.Normal, fontSize = 17.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
+    displayLarge = TextStyle(fontFamily = BricolageGrotesque, fontWeight = FontWeight.ExtraBold, fontSize = 34.sp, lineHeight = 36.sp, letterSpacing = 0.sp),
+    displayMedium = TextStyle(fontFamily = BricolageGrotesque, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, lineHeight = 30.sp, letterSpacing = 0.sp),
+    headlineLarge = TextStyle(fontFamily = BricolageGrotesque, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, lineHeight = 26.sp, letterSpacing = 0.sp),
+    headlineMedium = TextStyle(fontFamily = BricolageGrotesque, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, lineHeight = 22.sp, letterSpacing = 0.sp),
+    titleLarge = TextStyle(fontFamily = BricolageGrotesque, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
     titleMedium = TextStyle(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = 15.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
     titleSmall = TextStyle(fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.sp),
     bodyLarge = TextStyle(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Medium, fontSize = 15.sp, lineHeight = 21.sp, letterSpacing = 0.1.sp),

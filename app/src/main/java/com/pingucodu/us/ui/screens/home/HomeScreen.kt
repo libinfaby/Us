@@ -1,6 +1,5 @@
 package com.pingucodu.us.ui.screens.home
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,14 +9,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -25,7 +26,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,13 +37,17 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.ui.theme.BorderWidth
+import com.pingucodu.us.ui.theme.DashedDivider
 import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.Pink
+import com.pingucodu.us.ui.theme.PinguCoduType
+import com.pingucodu.us.ui.theme.PinkTint
 import com.pingucodu.us.ui.theme.Teal
-import com.pingucodu.us.ui.theme.Yellow
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import com.pingucodu.us.ui.theme.YellowSoft
+import com.pingucodu.us.ui.theme.hardShadow
+
+private val CardShape = RoundedCornerShape(18.dp)
+private val TileShape = RoundedCornerShape(16.dp)
 
 @Composable
 fun HomeScreen(
@@ -54,36 +58,14 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val username = uiState.username ?: ""
 
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(PinkTint)
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(Pink, CircleShape)
-                    .border(BorderWidth, Ink, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(username.take(1).uppercase(), style = MaterialTheme.typography.titleMedium)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("hey $username", style = MaterialTheme.typography.titleLarge)
-                Text(todayLabel(), style = MaterialTheme.typography.bodySmall)
-            }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { viewModel.logout() }) { Text("exit") }
-        }
-        Spacer(Modifier.height(20.dp))
-
-        Text("THE SCORE", style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.height(6.dp))
         ScoreCard(
             net = uiState.net,
             currentUsername = uiState.username,
@@ -93,75 +75,69 @@ fun HomeScreen(
         )
         Spacer(Modifier.height(16.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.height(IntrinsicSize.Max),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             FeatureTeaserCard(
                 label = "CYCLE",
                 title = uiState.cycleStatus?.currentDay?.let { "day $it" } ?: "not tracked yet",
                 subtitle = uiState.cycleStatus?.takeIf { it.currentDay != null }?.statusLabel,
                 color = Teal,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).fillMaxHeight(),
                 onClick = onNavigateToCycle,
             )
             FeatureTeaserCard(
                 label = "STASH",
                 title = "${uiState.stashSavedCount} saved",
                 subtitle = if (uiState.stashTodoCount > 0) "${uiState.stashTodoCount} to-dos pending" else null,
-                color = Yellow,
-                modifier = Modifier.weight(1f),
+                color = YellowSoft,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
                 onClick = onNavigateToStash,
             )
         }
 
         if (uiState.activityFeed.isNotEmpty()) {
             Spacer(Modifier.height(20.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("LATEST", style = MaterialTheme.typography.labelMedium)
-                Text("this week", style = MaterialTheme.typography.labelMedium)
-            }
-            Spacer(Modifier.height(8.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(BorderWidth, Ink, RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)),
+                    .hardShadow(CardShape)
+                    .border(BorderWidth, Ink, CardShape)
+                    .background(MaterialTheme.colorScheme.surface, CardShape)
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
             ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("LATEST", style = MaterialTheme.typography.labelMedium)
+                    Text("this week", style = MaterialTheme.typography.labelMedium, color = Ink.copy(alpha = 0.55f))
+                }
                 uiState.activityFeed.forEachIndexed { index, item ->
                     ActivityRow(item)
-                    if (index != uiState.activityFeed.lastIndex) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.5.dp)
-                                .background(Ink.copy(alpha = 0.12f)),
-                        )
-                    }
+                    if (index != uiState.activityFeed.lastIndex) DashedDivider()
                 }
             }
         }
 
         if (uiState.recurringExpenses.isNotEmpty()) {
             Spacer(Modifier.height(20.dp))
-            Text("ON REPEAT", style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.height(8.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(BorderWidth, Ink, RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)),
+                    .hardShadow(CardShape)
+                    .border(BorderWidth, Ink, CardShape)
+                    .background(MaterialTheme.colorScheme.surface, CardShape)
+                    .padding(14.dp),
             ) {
-                uiState.recurringExpenses.forEachIndexed { index, expense ->
-                    RecurringExpenseRow(expense, onClick = onNavigateToMoney)
-                    if (index != uiState.recurringExpenses.lastIndex) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.5.dp)
-                                .background(Ink.copy(alpha = 0.12f)),
-                        )
+                Text("ON REPEAT", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(10.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    uiState.recurringExpenses.forEach { expense ->
+                        RecurringExpenseRow(expense, onClick = onNavigateToMoney)
                     }
                 }
             }
         }
+        Spacer(Modifier.height(110.dp))
     }
 }
 
@@ -171,11 +147,14 @@ private fun RecurringExpenseRow(expense: ExpenseDto, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .border(2.5.dp, Ink, RoundedCornerShape(11.dp))
+            .background(PinkTint, RoundedCornerShape(11.dp))
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 11.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(expense.title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(8.dp))
         Text(formatCents(expense.amountCents), style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.width(8.dp))
         Box(
@@ -191,25 +170,25 @@ private fun RecurringExpenseRow(expense: ExpenseDto, onClick: () -> Unit) {
 
 @Composable
 private fun ActivityRow(item: ActivityFeedItem) {
-    val (color, abbreviation) = when (item.source) {
-        ActivitySource.MONEY -> Pink to "MO"
-        ActivitySource.CYCLE -> Teal to "CY"
-        ActivitySource.STASH -> Yellow to "ST"
+    val (badgeColor, code) = when (item.source) {
+        ActivitySource.MONEY -> Pink to "₹"
+        ActivitySource.CYCLE -> Teal to "cy"
+        ActivitySource.STASH -> if (item.badgeCode == "td") Color.White to "td" else YellowSoft to item.badgeCode
     }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(28.dp)
-                .background(color, RoundedCornerShape(8.dp))
-                .border(1.5.dp, Ink, RoundedCornerShape(8.dp)),
+                .size(34.dp)
+                .background(badgeColor, RoundedCornerShape(8.dp))
+                .border(2.dp, Ink, RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(abbreviation, style = MaterialTheme.typography.labelSmall)
+            Text(code, style = PinguCoduType.monoLabel)
         }
         Spacer(Modifier.width(10.dp))
         Text(item.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -229,34 +208,47 @@ private fun ScoreCard(
     val myNet = currentUsername?.let { net[it] } ?: 0
     val other = net.keys.firstOrNull { it != currentUsername }
 
-    val text = when {
+    val headline = when {
         myNet == 0L || other == null -> "all settled up"
-        myNet > 0 -> "$other owes you ${formatCents(myNet)}"
-        else -> "you owe $other ${formatCents(-myNet)}"
+        myNet > 0 -> "$other owes you"
+        else -> "you owe $other"
     }
+    val amount = if (myNet == 0L || other == null) null else formatCents(kotlin.math.abs(myNet))
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(BorderWidth, Ink, RoundedCornerShape(16.dp))
-            .background(Pink, RoundedCornerShape(16.dp))
-            .padding(20.dp),
+            .hardShadow(CardShape)
+            .border(BorderWidth, Ink, CardShape)
+            .background(Pink, CardShape)
+            .padding(16.dp),
     ) {
-        Text(text, style = MaterialTheme.typography.titleLarge, color = Ink)
-        Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("THE SCORE", style = MaterialTheme.typography.labelMedium, color = Ink)
+        Spacer(Modifier.height(8.dp))
+        Text(headline, style = MaterialTheme.typography.displayMedium, color = Ink)
+        if (amount != null) {
+            Text(amount, style = MaterialTheme.typography.displayLarge, color = Ink)
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(
                 onClick = onSeeAll,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink),
-                border = BorderStroke(BorderWidth, Ink),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Ink),
+                border = androidx.compose.foundation.BorderStroke(BorderWidth, Ink),
+                modifier = Modifier
+                    .weight(1f)
+                    .hardShadow(RoundedCornerShape(12.dp), offsetX = 3.dp, offsetY = 3.dp),
             ) {
-                Text(if (openCount == 1) "see 1 open" else "see all $openCount open")
+                Text(if (openCount == 1) "see 1 open" else "see all $openCount open", style = MaterialTheme.typography.labelLarge)
             }
             Button(
                 onClick = onSettleUp,
-                colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Pink),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White),
+                modifier = Modifier.weight(1f),
             ) {
-                Text("settle up")
+                Text("settle up", style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -274,22 +266,20 @@ private fun FeatureTeaserCard(
     val interactionSource = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .border(BorderWidth, Ink, RoundedCornerShape(16.dp))
-            .background(color, RoundedCornerShape(16.dp))
+            .heightIn(min = 126.dp)
+            .hardShadow(TileShape)
+            .border(BorderWidth, Ink, TileShape)
+            .background(color, TileShape)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(16.dp),
+            .padding(14.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.height(6.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(title, style = MaterialTheme.typography.headlineMedium)
         if (subtitle != null) {
-            Spacer(Modifier.height(2.dp))
             Text(subtitle, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
 private fun formatCents(cents: Long): String = "₹%.2f".format(cents / 100.0)
-
-private fun todayLabel(): String =
-    LocalDate.now().format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.ENGLISH)).lowercase()

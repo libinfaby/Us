@@ -48,6 +48,7 @@ import com.pingucodu.us.data.network.HangoutDto
 import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.Pink
+import com.pingucodu.us.ui.theme.PlaceholderGrey
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -114,7 +115,7 @@ fun ExpenseFormDialog(
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    placeholder = { Text("what was it?") },
+                    placeholder = { Text("what was it?", color = PlaceholderGrey) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Ink, focusedBorderColor = Ink),
@@ -125,7 +126,7 @@ fun ExpenseFormDialog(
             OutlinedTextField(
                 value = amountText,
                 onValueChange = { amountText = it },
-                placeholder = { Text("0") },
+                placeholder = { Text("0", color = PlaceholderGrey) },
                 leadingIcon = { Text("₹", style = MaterialTheme.typography.titleMedium) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth(),
@@ -143,7 +144,7 @@ fun ExpenseFormDialog(
                 OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },
-                    placeholder = { Text("note — what's this about?") },
+                    placeholder = { Text("note — what's this about?", color = PlaceholderGrey) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Ink, focusedBorderColor = Ink),
@@ -155,7 +156,7 @@ fun ExpenseFormDialog(
                 OutlinedTextField(
                     value = category,
                     onValueChange = { category = it },
-                    placeholder = { Text("household, online, ...") },
+                    placeholder = { Text("household, online, ...", color = PlaceholderGrey) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Ink, focusedBorderColor = Ink),
@@ -169,7 +170,7 @@ fun ExpenseFormDialog(
                         OutlinedTextField(
                             value = newHangoutName,
                             onValueChange = { newHangoutName = it },
-                            placeholder = { Text("hangout name") },
+                            placeholder = { Text("hangout name", color = PlaceholderGrey) },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Ink, focusedBorderColor = Ink),
@@ -256,7 +257,7 @@ fun ExpenseFormDialog(
                             OutlinedTextField(
                                 value = customPingu,
                                 onValueChange = { customPingu = it },
-                                placeholder = { Text("pingu ₹") },
+                                placeholder = { Text("pingu ₹", color = PlaceholderGrey) },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
@@ -265,7 +266,7 @@ fun ExpenseFormDialog(
                             OutlinedTextField(
                                 value = customCodu,
                                 onValueChange = { customCodu = it },
-                                placeholder = { Text("codu ₹") },
+                                placeholder = { Text("codu ₹", color = PlaceholderGrey) },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),

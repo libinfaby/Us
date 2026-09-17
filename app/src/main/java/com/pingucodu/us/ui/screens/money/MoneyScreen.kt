@@ -51,6 +51,7 @@ import com.pingucodu.us.ui.theme.Green
 import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.Orange
 import com.pingucodu.us.ui.theme.Pink
+import com.pingucodu.us.ui.theme.PinkTint
 import com.pingucodu.us.ui.theme.Purple
 import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.Yellow
@@ -66,13 +67,14 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
 
     Scaffold(
         modifier = modifier,
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = PinkTint,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { viewModel.openAddDialog() },
                 containerColor = Pink,
                 contentColor = Ink,
                 shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.padding(bottom = 105.dp),
             ) {
                 Icon(Icons.Filled.Add, contentDescription = "add expense")
             }
@@ -121,7 +123,7 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
                 }
                 else -> {
                     LazyColumn(
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 110.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         items(uiState.expenses, key = { it.id }) { expense ->

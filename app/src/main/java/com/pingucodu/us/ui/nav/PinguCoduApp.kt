@@ -1,26 +1,42 @@
 package com.pingucodu.us.ui.nav
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -29,29 +45,39 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.pingucodu.us.ui.auth.AuthStatus
 import com.pingucodu.us.ui.auth.AuthViewModel
-import com.pingucodu.us.ui.screens.changepin.ChangePinScreen
 import com.pingucodu.us.ui.screens.cycle.CycleScreen
 import com.pingucodu.us.ui.screens.home.HomeScreen
 import com.pingucodu.us.ui.screens.login.LoginScreen
 import com.pingucodu.us.ui.screens.money.MoneyScreen
+import com.pingucodu.us.ui.screens.settings.SettingsScreen
 import com.pingucodu.us.ui.screens.stash.StashScreen
+import com.pingucodu.us.ui.theme.AvatarShape
+import com.pingucodu.us.ui.theme.BorderWidth
+import com.pingucodu.us.ui.theme.Ink
+import com.pingucodu.us.ui.theme.Pink
+import com.pingucodu.us.ui.theme.PinguCoduType
+import com.pingucodu.us.ui.theme.PinkTint
+import com.pingucodu.us.ui.theme.hardShadow
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun PinguCoduApp(authViewModel: AuthViewModel = hiltViewModel()) {
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(modifier = Modifier.fillMaxSize(), color = PinkTint) {
         when (val status = authViewModel.authStatus.collectAsState().value) {
             AuthStatus.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = Ink)
             }
             AuthStatus.LoggedOut -> LoginScreen()
-            is AuthStatus.LoggedIn -> MainScreen(username = status.username)
+            is AuthStatus.LoggedIn -> MainScreen(username = status.username, onLogout = authViewModel::logout)
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MainScreen(username: String) {
+private fun MainScreen(username: String, onLogout: () -> Unit) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -66,49 +92,138 @@ private fun MainScreen(username: String) {
     }
 
     Scaffold(
+        containerColor = PinkTint,
         topBar = {
             if (isTabRoute) {
-                TopAppBar(
-                    title = { Text(username) },
-                    actions = {
-                        IconButton(onClick = { navController.navigate(CHANGE_PIN_ROUTE) }) {
-                            Icon(Icons.Filled.Settings, contentDescription = "change pin")
-                        }
-                    },
+                AppHeader(
+                    username = username,
+                    onSettings = { navController.navigate(SETTINGS_ROUTE) },
+                    onLogout = onLogout,
                 )
             }
         },
-        bottomBar = {
-            if (isTabRoute) {
-                NavigationBar {
-                    Tab.entries.forEach { tab ->
-                        NavigationBarItem(
-                            selected = currentRoute == tab.route,
-                            onClick = { navigateToTab(tab) },
-                            icon = { Icon(tab.icon, contentDescription = tab.label) },
-                            label = { Text(tab.label) },
-                        )
-                    }
+        // No bottomBar slot: PillNavBar is layered on top of the content below instead, as a
+        // true floating overlay the content can scroll behind - a Scaffold bottomBar would
+        // reserve its own opaque strip and dock the content above it instead.
+    ) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+            NavHost(
+                navController = navController,
+                startDestination = Tab.Home.route,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                composable(Tab.Home.route) {
+                    HomeScreen(
+                        onNavigateToMoney = { navigateToTab(Tab.Money) },
+                        onNavigateToCycle = { navigateToTab(Tab.Cycle) },
+                        onNavigateToStash = { navigateToTab(Tab.Stash) },
+                    )
+                }
+                composable(Tab.Money.route) { MoneyScreen() }
+                composable(Tab.Cycle.route) { CycleScreen() }
+                composable(Tab.Stash.route) { StashScreen() }
+                composable(SETTINGS_ROUTE) {
+                    SettingsScreen(onBack = { navController.popBackStack() })
                 }
             }
-        }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Tab.Home.route,
-            modifier = Modifier.padding(innerPadding),
-        ) {
-            composable(Tab.Home.route) {
-                HomeScreen(
-                    onNavigateToMoney = { navigateToTab(Tab.Money) },
-                    onNavigateToCycle = { navigateToTab(Tab.Cycle) },
-                    onNavigateToStash = { navigateToTab(Tab.Stash) },
+            if (isTabRoute) {
+                PillNavBar(
+                    currentRoute = currentRoute,
+                    onSelect = ::navigateToTab,
+                    modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
-            composable(Tab.Money.route) { MoneyScreen() }
-            composable(Tab.Cycle.route) { CycleScreen() }
-            composable(Tab.Stash.route) { StashScreen() }
-            composable(CHANGE_PIN_ROUTE) { ChangePinScreen(onDone = { navController.popBackStack() }) }
         }
     }
 }
+
+@Composable
+private fun AppHeader(username: String, onSettings: () -> Unit, onLogout: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PinkTint)
+            .statusBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(50.dp)
+                .hardShadow(AvatarShape, offsetX = 3.dp, offsetY = 3.dp)
+                .background(Pink, AvatarShape)
+                .border(BorderWidth, Ink, AvatarShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(username.take(1).uppercase(), style = MaterialTheme.typography.titleLarge)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("hey $username", style = MaterialTheme.typography.titleLarge)
+            Text(todayLabel(), style = MaterialTheme.typography.bodySmall)
+        }
+        val settingsInteractionSource = remember { MutableInteractionSource() }
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clickable(interactionSource = settingsInteractionSource, indication = null, onClick = onSettings),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Settings, contentDescription = "settings", tint = Ink, modifier = Modifier.size(24.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        val interactionSource = remember { MutableInteractionSource() }
+        Box(
+            modifier = Modifier
+                .background(Color.White, RoundedCornerShape(50))
+                .border(2.5.dp, Ink, RoundedCornerShape(50))
+                .clickable(interactionSource = interactionSource, indication = null, onClick = onLogout)
+                .padding(horizontal = 11.dp, vertical = 7.dp),
+        ) {
+            Text("exit", style = PinguCoduType.monoLabel)
+        }
+    }
+}
+
+@Composable
+private fun PillNavBar(currentRoute: String?, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .hardShadow(RoundedCornerShape(22.dp))
+            .border(BorderWidth, Ink, RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(22.dp))
+            .padding(vertical = 16.dp, horizontal = 8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        Tab.entries.forEach { tab ->
+            val selected = currentRoute == tab.route
+            val interactionSource = remember { MutableInteractionSource() }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(interactionSource = interactionSource, indication = null) { onSelect(tab) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .background(if (selected) Pink else Color.Transparent, tab.shape)
+                        .border(2.dp, Ink, tab.shape),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    tab.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Ink.copy(alpha = if (selected) 1f else 0.45f),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+private fun todayLabel(): String =
+    LocalDate.now().format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.ENGLISH)).lowercase()

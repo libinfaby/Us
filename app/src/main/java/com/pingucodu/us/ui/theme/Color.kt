@@ -6,7 +6,7 @@ import androidx.compose.ui.graphics.Color
 // Neo-brutalist palette: flat colors, near-black ink for borders/text, cream base.
 
 val Cream = Color(0xFFFFF6E9)
-val PinkTint = Color(0xFFFFF1F7)
+val PinkTint = Color(0xFFFFE4EF)
 val Ink = Color(0xFF111111)
 
 val Pink = Color(0xFFFF4FA3)
@@ -20,6 +20,9 @@ val Coral = Color(0xFFFF5A5F)
 val Purple = Color(0xFF9B6BFF)
 val Orange = Color(0xFFFF8A3D)
 
+val DescriptionGrey = Color(0xFF5D585A)
+val PlaceholderGrey = Color(0xFF7E7E7E)
+
 /**
  * Semantic tokens for the app's own neo-brutalist components (cards, chips, tab bar).
  * Kept separate from Material3's ColorScheme because this design's roles (money/cycle/
@@ -31,11 +34,11 @@ object PinguCoduColors {
     val surfaceTint = PinkTint
     val border = Ink
     val textPrimary = Ink
-    val textMuted = Ink.copy(alpha = 0.6f)
+    val textMuted = DescriptionGrey
 
     val money = Pink
     val cycle = Teal
-    val stash = Yellow
+    val stash = YellowSoft
     val positive = Green
     val warning = Coral
     val accentPurple = Purple

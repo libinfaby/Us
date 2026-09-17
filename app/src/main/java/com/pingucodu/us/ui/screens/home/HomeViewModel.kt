@@ -30,7 +30,13 @@ import javax.inject.Inject
 
 enum class ActivitySource { MONEY, CYCLE, STASH }
 
-data class ActivityFeedItem(val source: ActivitySource, val text: String, val timeLabel: String)
+/** [badgeCode] is the 2-letter (or "₹") tag shown in the row's source badge; only meaningful for STASH. */
+data class ActivityFeedItem(
+    val source: ActivitySource,
+    val text: String,
+    val timeLabel: String,
+    val badgeCode: String = "",
+)
 
 data class HomeUiState(
     val isLoading: Boolean = true,
@@ -102,10 +108,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun logout() {
-        viewModelScope.launch { authRepository.logout() }
-    }
-
     private fun buildActivityFeed(
         openExpenseCount: Int,
         cycleStatus: CycleStatusDto?,
@@ -120,7 +122,14 @@ class HomeViewModel @Inject constructor(
         }
         stashItems?.sortedByDescending { it.createdAt }?.take(4)?.forEach { item ->
             val text = if (item.type == "todo") item.title else "${item.author} shared \"${item.title}\""
-            add(ActivityFeedItem(ActivitySource.STASH, text, relativeTime(item.createdAt)))
+            val code = when (item.type) {
+                "movie" -> "mv"
+                "link" -> "ln"
+                "place" -> "pl"
+                "note" -> "nt"
+                else -> "td"
+            }
+            add(ActivityFeedItem(ActivitySource.STASH, text, relativeTime(item.createdAt), badgeCode = code))
         }
     }.take(6)
 

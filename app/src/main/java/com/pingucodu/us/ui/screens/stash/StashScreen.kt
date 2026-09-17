@@ -2,6 +2,7 @@ package com.pingucodu.us.ui.screens.stash
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -15,23 +16,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -49,29 +48,30 @@ import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import com.pingucodu.us.ui.theme.BorderWidth
 import com.pingucodu.us.ui.theme.Coral
+import com.pingucodu.us.ui.theme.DashedDivider
 import com.pingucodu.us.ui.theme.Ink
-import com.pingucodu.us.ui.theme.Yellow
+import com.pingucodu.us.ui.theme.Pink
+import com.pingucodu.us.ui.theme.PinguCoduType
+import com.pingucodu.us.ui.theme.Teal
+import com.pingucodu.us.ui.theme.YellowSoft
+import com.pingucodu.us.ui.theme.hardShadow
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+
+private val CardShape = RoundedCornerShape(14.dp)
+private val SQLITE_DATETIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
 @Composable
 fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     var itemToDelete by remember { mutableStateOf<StashItemDto?>(null) }
 
-    Scaffold(
-        modifier = modifier,
-        containerColor = MaterialTheme.colorScheme.background,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.openAddDialog() },
-                containerColor = Yellow,
-                contentColor = Ink,
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "add to stash")
-            }
-        },
-    ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Spacer(Modifier.height(4.dp))
             StatusFilterPills(selected = uiState.statusFilter, onSelect = viewModel::setStatusFilter)
             Spacer(Modifier.height(10.dp))
             TypeFilterRow(selected = uiState.typeFilter, onSelect = viewModel::setTypeFilter)
@@ -99,7 +99,7 @@ fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltV
                 }
                 else -> {
                     LazyColumn(
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 110.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         items(uiState.items, key = { it.id }) { item ->
@@ -107,12 +107,30 @@ fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltV
                                 item = item,
                                 onToggle = { viewModel.toggleItem(item.id) },
                                 onEdit = { viewModel.openEditDialog(item) },
-                                onLongPress = { itemToDelete = item },
+                                onDelete = { itemToDelete = item },
                             )
                         }
                     }
                 }
             }
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 125.dp)
+                .size(66.dp)
+                .hardShadow(CircleShape)
+                .background(Pink, CircleShape)
+                .border(BorderWidth, Ink, CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = viewModel::openAddDialog,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("+", style = MaterialTheme.typography.headlineLarge)
         }
     }
 
@@ -173,7 +191,7 @@ private fun Pill(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .border(2.dp, Ink, RoundedCornerShape(50))
-            .background(if (selected) Yellow else MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
+            .background(if (selected) YellowSoft else MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
             .combinedClickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     ) {
@@ -181,38 +199,54 @@ private fun Pill(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+private fun typeBadgeColor(type: String): Color = when (type) {
+    "movie", "todo" -> Pink
+    "place" -> Teal
+    "link" -> YellowSoft
+    else -> Color.White
+}
+
+private fun relativeTime(sqliteDateTime: String): String = try {
+    val then = LocalDateTime.parse(sqliteDateTime, SQLITE_DATETIME).toInstant(ZoneOffset.UTC)
+    val minutes = Duration.between(then, Instant.now()).toMinutes()
+    when {
+        minutes < 1 -> "now"
+        minutes < 60 -> "${minutes}m"
+        minutes < 60 * 24 -> "${minutes / 60}h"
+        else -> "${minutes / (60 * 24)}d"
+    }
+} catch (e: Exception) {
+    ""
+}
+
 @Composable
 private fun StashItemCard(
     item: StashItemDto,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
-    onLongPress: () -> Unit,
+    onDelete: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(BorderWidth, Ink, RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
-            .combinedClickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {},
-                onLongClick = onLongPress,
-            )
+            .hardShadow(CardShape)
+            .border(BorderWidth, Ink, CardShape)
+            .background(MaterialTheme.colorScheme.surface, CardShape)
             .padding(16.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(item.title, style = MaterialTheme.typography.titleMedium)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .border(1.5.dp, Ink, RoundedCornerShape(50))
-                    .background(Yellow, RoundedCornerShape(50))
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .border(2.dp, Ink, RoundedCornerShape(7.dp))
+                    .background(typeBadgeColor(item.type), RoundedCornerShape(7.dp))
+                    .padding(horizontal = 7.dp, vertical = 5.dp),
             ) {
-                Text(item.type, style = MaterialTheme.typography.labelSmall)
+                Text(item.type, style = PinguCoduType.monoLabel)
             }
+            Text("${item.author} · ${relativeTime(item.createdAt)}", style = MaterialTheme.typography.labelSmall)
         }
+        Spacer(Modifier.height(8.dp))
+        Text(item.title, style = MaterialTheme.typography.titleMedium)
         if (!item.body.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
             Text(item.body, style = MaterialTheme.typography.bodySmall)
@@ -229,22 +263,18 @@ private fun StashItemCard(
                             .border(1.dp, Ink, RoundedCornerShape(50))
                             .padding(horizontal = 8.dp, vertical = 2.dp),
                     ) {
-                        Text(tag, style = MaterialTheme.typography.labelSmall)
+                        Text("#$tag", style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
         }
         Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("added by ${item.author}", style = MaterialTheme.typography.labelSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedPillButton(label = if (item.status == "saved") "mark done" else "unmark", onClick = onToggle)
-                OutlinedPillButton(label = "edit", onClick = onEdit)
-            }
+        DashedDivider()
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedPillButton(label = if (item.status == "saved") "saved" else "done", onClick = onToggle)
+            OutlinedPillButton(label = "edit", onClick = onEdit)
+            OutlinedPillButton(label = "delete", onClick = onDelete)
         }
     }
 }
@@ -281,6 +311,7 @@ private fun StashItemFormDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .hardShadow(RoundedCornerShape(20.dp))
                 .border(BorderWidth, Ink, RoundedCornerShape(20.dp))
                 .background(MaterialTheme.colorScheme.background, RoundedCornerShape(20.dp))
                 .padding(24.dp),
@@ -349,7 +380,7 @@ private fun StashItemFormDialog(
                     enabled = isValid && !isSubmitting,
                     modifier = Modifier.border(BorderWidth, Ink, RoundedCornerShape(12.dp)),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Yellow, contentColor = Ink),
+                    colors = ButtonDefaults.buttonColors(containerColor = YellowSoft, contentColor = Ink),
                 ) {
                     Text(if (item == null) "save" else "update")
                 }
