@@ -63,6 +63,11 @@ sealed interface CreateHangoutResult {
     data class NetworkError(val message: String) : CreateHangoutResult
 }
 
+sealed interface DeleteHangoutResult {
+    data object Success : DeleteHangoutResult
+    data class NetworkError(val message: String) : DeleteHangoutResult
+}
+
 @Singleton
 class ExpenseRepository @Inject constructor(
     private val api: ApiService,
@@ -205,5 +210,15 @@ class ExpenseRepository @Inject constructor(
         } else {
             CreateHangoutResult.NetworkError(errorMessage(response))
         }
+    }
+
+    suspend fun deleteHangout(id: String): DeleteHangoutResult {
+        val token = bearerToken() ?: return DeleteHangoutResult.NetworkError("not logged in")
+        val response = try {
+            api.deleteHangout(token, id)
+        } catch (e: IOException) {
+            return DeleteHangoutResult.NetworkError(e.message ?: "couldn't reach the server")
+        }
+        return if (response.isSuccessful) DeleteHangoutResult.Success else DeleteHangoutResult.NetworkError(errorMessage(response))
     }
 }

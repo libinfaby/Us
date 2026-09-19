@@ -2,12 +2,14 @@ package com.pingucodu.us.ui.screens.money
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,24 +17,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -41,50 +37,44 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.data.network.HangoutDto
+import com.pingucodu.us.ui.theme.BorderWidth
 import com.pingucodu.us.ui.theme.Coral
-import com.pingucodu.us.ui.theme.Green
+import com.pingucodu.us.ui.theme.DashedDivider
 import com.pingucodu.us.ui.theme.Ink
-import com.pingucodu.us.ui.theme.Orange
 import com.pingucodu.us.ui.theme.Pink
+import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.PinkTint
-import com.pingucodu.us.ui.theme.Purple
+import com.pingucodu.us.ui.theme.NeoConfirmDialog
 import com.pingucodu.us.ui.theme.Teal
-import com.pingucodu.us.ui.theme.Yellow
+import com.pingucodu.us.ui.theme.YellowSoft
+import com.pingucodu.us.ui.theme.hardShadow
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+private val BalanceCardShape = RoundedCornerShape(18.dp)
 
 @Composable
 fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     var expenseToDelete by remember { mutableStateOf<ExpenseDto?>(null) }
+    var expenseToTogglePaid by remember { mutableStateOf<ExpenseDto?>(null) }
+    var hangoutToDelete by remember { mutableStateOf<HangoutDto?>(null) }
     var confirmSettleAll by remember { mutableStateOf(false) }
 
-    Scaffold(
-        modifier = modifier,
-        containerColor = PinkTint,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.openAddDialog() },
-                containerColor = Pink,
-                contentColor = Ink,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.padding(bottom = 105.dp),
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "add expense")
-            }
-        },
-    ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+    Box(modifier = modifier.fillMaxSize().background(PinkTint)) {
+        Column(modifier = Modifier.fillMaxSize()) {
             BalanceHeaderCard(
                 net = uiState.net,
                 currentUsername = uiState.currentUsername,
-                showSettleAll = uiState.statusFilter == ExpenseStatusFilter.OPEN,
                 onSettleAll = { confirmSettleAll = true },
             )
 
@@ -97,7 +87,10 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
             HangoutFilterRow(
                 hangouts = uiState.hangouts,
                 selectedHangoutId = uiState.hangoutFilter,
+                showNoHangoutOnly = uiState.showNoHangoutOnly,
                 onSelect = viewModel::setHangoutFilter,
+                onSelectNoHangout = viewModel::setNoHangoutFilter,
+                onLongPressHangout = { hangoutToDelete = it },
             )
             Spacer(Modifier.height(10.dp))
 
@@ -110,13 +103,19 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
                 )
             }
 
+            val displayedExpenses = if (uiState.showNoHangoutOnly) {
+                uiState.expenses.filter { it.hangoutId == null }
+            } else {
+                uiState.expenses
+            }
+
             when {
                 uiState.isLoading && uiState.expenses.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = Ink)
                     }
                 }
-                uiState.expenses.isEmpty() -> {
+                displayedExpenses.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("no expenses yet", style = MaterialTheme.typography.bodyMedium)
                     }
@@ -124,14 +123,14 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
                 else -> {
                     LazyColumn(
                         contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 110.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        items(uiState.expenses, key = { it.id }) { expense ->
+                        items(displayedExpenses, key = { it.id }) { expense ->
                             ExpenseCard(
                                 expense = expense,
                                 hangouts = uiState.hangouts,
                                 currentUsername = uiState.currentUsername,
-                                onMarkPaid = { viewModel.settleExpense(expense.id) },
+                                onMarkPaid = { expenseToTogglePaid = expense },
                                 onEdit = { viewModel.openEditDialog(expense) },
                                 onLongPress = { expenseToDelete = expense },
                             )
@@ -139,6 +138,24 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
                     }
                 }
             }
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 125.dp)
+                .size(66.dp)
+                .hardShadow(CircleShape)
+                .background(Pink, CircleShape)
+                .border(BorderWidth, Ink, CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { viewModel.openAddDialog() },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("+", style = MaterialTheme.typography.headlineLarge)
         }
     }
 
@@ -156,32 +173,68 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
     }
 
     if (expenseToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { expenseToDelete = null },
-            title = { Text("delete expense?") },
-            text = { Text("delete \"${expenseToDelete?.title}\"? this can't be undone.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.deleteExpense(expenseToDelete!!.id)
-                    expenseToDelete = null
-                }) { Text("delete", color = Coral) }
+        val target = expenseToDelete!!
+        NeoConfirmDialog(
+            title = "delete this?",
+            message = "\"${target.title}\" and its split go away for good. this one you can't take back.",
+            confirmLabel = "delete",
+            badgeLabel = "no undo",
+            accentColor = Pink,
+            onConfirm = {
+                viewModel.deleteExpense(target.id)
+                expenseToDelete = null
             },
-            dismissButton = { TextButton(onClick = { expenseToDelete = null }) { Text("cancel") } },
+            onDismiss = { expenseToDelete = null },
+        )
+    }
+
+    if (expenseToTogglePaid != null) {
+        val target = expenseToTogglePaid!!
+        val isPaid = target.status != "open"
+        NeoConfirmDialog(
+            title = if (isPaid) "bring this back?" else "mark as paid?",
+            message = if (isPaid) {
+                "\"${target.title}\" will be marked unpaid again."
+            } else {
+                "mark \"${target.title}\" as paid?"
+            },
+            confirmLabel = if (isPaid) "bring it back" else "mark paid",
+            badgeLabel = "can undo",
+            onConfirm = {
+                viewModel.settleExpense(target.id)
+                expenseToTogglePaid = null
+            },
+            onDismiss = { expenseToTogglePaid = null },
+        )
+    }
+
+    if (hangoutToDelete != null) {
+        val target = hangoutToDelete!!
+        NeoConfirmDialog(
+            title = "delete this?",
+            message = "\"${target.name}\" goes away for good. its expenses keep their date and amount but lose this hangout.",
+            confirmLabel = "delete",
+            badgeLabel = "no undo",
+            accentColor = Pink,
+            onConfirm = {
+                viewModel.deleteHangout(target.id)
+                hangoutToDelete = null
+            },
+            onDismiss = { hangoutToDelete = null },
         )
     }
 
     if (confirmSettleAll) {
-        AlertDialog(
-            onDismissRequest = { confirmSettleAll = false },
-            title = { Text("settle all?") },
-            text = { Text("mark all open expenses" + (uiState.hangoutFilter?.let { " in this hangout" } ?: "") + " as settled?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.settleAll()
-                    confirmSettleAll = false
-                }) { Text("settle all") }
+        NeoConfirmDialog(
+            title = "settle all?",
+            message = "mark all open expenses" + (uiState.hangoutFilter?.let { " in this hangout" } ?: "") + " as settled?",
+            confirmLabel = "settle all",
+            badgeLabel = "can undo",
+            onConfirm = {
+                viewModel.settleAll()
+                confirmSettleAll = false
             },
-            dismissButton = { TextButton(onClick = { confirmSettleAll = false }) { Text("cancel") } },
+            onDismiss = { confirmSettleAll = false },
         )
     }
 }
@@ -190,40 +243,44 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
 private fun BalanceHeaderCard(
     net: Map<String, Long>,
     currentUsername: String?,
-    showSettleAll: Boolean,
     onSettleAll: () -> Unit,
 ) {
     val myNet = currentUsername?.let { net[it] } ?: 0
     val other = net.keys.firstOrNull { it != currentUsername }
 
-    val text = when {
+    val headline = when {
         myNet == 0L || other == null -> "all settled up"
-        myNet > 0 -> "$other owes you ${formatCents(myNet)}"
-        else -> "you owe $other ${formatCents(-myNet)}"
+        myNet > 0 -> "$other owes you"
+        else -> "you owe $other"
     }
+    val amount = if (myNet == 0L || other == null) null else formatCents(kotlin.math.abs(myNet))
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(20.dp)
-            .border(2.5.dp, Ink, RoundedCornerShape(16.dp))
-            .background(Pink, RoundedCornerShape(16.dp))
-            .padding(20.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .hardShadow(BalanceCardShape)
+            .border(BorderWidth, Ink, BalanceCardShape)
+            .background(Pink, BalanceCardShape)
+            .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("OPEN BALANCE", style = MaterialTheme.typography.labelMedium)
-            Text(text, style = MaterialTheme.typography.titleLarge, color = Ink)
+            Text("OPEN BALANCE", style = MaterialTheme.typography.labelMedium, color = Ink)
+            Spacer(Modifier.height(8.dp))
+            Text(headline, style = MaterialTheme.typography.bodyLarge, color = Ink)
+            if (amount != null) {
+                Text(amount, style = MaterialTheme.typography.displayLarge, color = Ink)
+            }
         }
-        if (showSettleAll && myNet != 0L) {
+        if (myNet != 0L) {
+            Spacer(Modifier.width(12.dp))
             Button(
                 onClick = onSettleAll,
-                modifier = Modifier.border(2.dp, Ink, RoundedCornerShape(12.dp)),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Pink),
+                colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White),
             ) {
-                Text("settle all")
+                Text("settle all", style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -236,7 +293,7 @@ private fun StatusFilterPills(selected: ExpenseStatusFilter, onSelect: (ExpenseS
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         ExpenseStatusFilter.entries.forEach { filter ->
-            Pill(label = filter.label, selected = filter == selected, onClick = { onSelect(filter) })
+            Pill(label = filter.label, selected = filter == selected, modifier = Modifier.weight(1f), onClick = { onSelect(filter) })
         }
     }
 }
@@ -245,43 +302,75 @@ private fun StatusFilterPills(selected: ExpenseStatusFilter, onSelect: (ExpenseS
 private fun HangoutFilterRow(
     hangouts: List<HangoutDto>,
     selectedHangoutId: String?,
+    showNoHangoutOnly: Boolean,
     onSelect: (String?) -> Unit,
+    onSelectNoHangout: () -> Unit,
+    onLongPressHangout: (HangoutDto) -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        Pill(label = "all hangouts", selected = selectedHangoutId == null, onClick = { onSelect(null) })
-        hangouts.forEach { h ->
+        Pill(
+            label = "all hangouts",
+            selected = selectedHangoutId == null && !showNoHangoutOnly,
+            dot = { DotIndicator(color = Color.White, shape = CircleShape) },
+            onClick = { onSelect(null) },
+        )
+        hangouts.forEachIndexed { index, h ->
             Pill(
                 label = h.name,
                 selected = selectedHangoutId == h.id,
-                accentColor = hangoutColor(h.id),
+                dot = { DotIndicator(color = hangoutColor(index), shape = RoundedCornerShape(3.dp)) },
                 onClick = { onSelect(h.id) },
+                onLongClick = { onLongPressHangout(h) },
             )
         }
+        Pill(
+            label = "no hangout",
+            selected = showNoHangoutOnly,
+            dot = { DotIndicator(color = Color.Transparent, shape = CircleShape) },
+            onClick = onSelectNoHangout,
+        )
     }
 }
 
 @Composable
-private fun Pill(label: String, selected: Boolean, accentColor: Color? = null, onClick: () -> Unit) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val background = when {
-        selected && accentColor != null -> accentColor
-        selected -> Pink
-        else -> MaterialTheme.colorScheme.surface
-    }
-    Row(
+private fun DotIndicator(color: Color, shape: Shape) {
+    Box(
         modifier = Modifier
-            .border(2.dp, Ink, RoundedCornerShape(50))
-            .background(background, RoundedCornerShape(50))
-            .combinedClickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .size(16.dp)
+            .border(2.dp, Ink, shape)
+            .background(color, shape),
+    )
+}
+
+@Composable
+private fun Pill(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    dot: (@Composable () -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier = modifier
+            .let { if (selected) it.hardShadow(shape, offsetX = 3.dp, offsetY = 3.dp) else it }
+            .border(BorderWidth, Ink, shape)
+            .background(if (selected) Pink else Color.White, shape)
+            .combinedClickable(interactionSource = interactionSource, indication = null, onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = Ink)
+        dot?.invoke()
+        Text(label, style = MaterialTheme.typography.labelLarge, color = Ink)
     }
 }
 
@@ -295,95 +384,124 @@ private fun ExpenseCard(
     onLongPress: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val isPaid = expense.status != "open"
+    val hangoutIndex = expense.hangoutId?.let { hid -> hangouts.indexOfFirst { it.id == hid } } ?: -1
+    val stripeColor = if (isPaid) Teal else Pink
+    val shape = RoundedCornerShape(18.dp)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(2.5.dp, Ink, RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+            .hardShadow(shape)
+            .border(BorderWidth, Ink, shape)
+            .background(Color.White, shape)
+            .clip(shape)
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = {},
                 onLongClick = onLongPress,
-            )
-            .padding(16.dp),
+            ),
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(expense.title, style = MaterialTheme.typography.titleMedium)
-            Text(formatCents(expense.amountCents), style = MaterialTheme.typography.titleMedium)
-        }
-        if (!expense.subtitle.isNullOrBlank()) {
-            Spacer(Modifier.height(2.dp))
-            Text(expense.subtitle, style = MaterialTheme.typography.bodySmall)
-        }
-        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth().height(10.dp).background(stripeColor))
+        Box(Modifier.fillMaxWidth().height(BorderWidth).background(Ink))
 
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            TagChip(formatShortDate(expense.expenseDate))
-            val placeOrCategory = expense.location ?: expense.category
-            if (!placeOrCategory.isNullOrBlank()) TagChip(placeOrCategory)
-            TagChip(if (expense.isRecurring) (expense.cadence ?: "recurring") else "one-off")
-            expense.hangoutId?.let { hid ->
-                val name = hangouts.firstOrNull { it.id == hid }?.name
-                if (name != null) TagChip(name, background = hangoutColor(hid))
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        HorizontalDivider(color = Ink.copy(alpha = 0.15f))
-        Spacer(Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                formatSplitSummary(expense),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.weight(1f),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (expense.status == "open") {
-                    OutlinedPillButton(label = "mark paid", onClick = onMarkPaid)
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(expense.title, style = MaterialTheme.typography.titleLarge)
+                    if (!expense.subtitle.isNullOrBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(expense.subtitle, style = MaterialTheme.typography.bodySmall, color = Ink.copy(alpha = 0.7f))
+                    }
                 }
-                OutlinedPillButton(label = "edit", onClick = onEdit)
+                Text(formatCents(expense.amountCents), style = MaterialTheme.typography.headlineMedium)
+            }
+            Spacer(Modifier.height(11.dp))
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                TagChip(formatShortDate(expense.expenseDate))
+                val placeOrCategory = expense.location ?: expense.category
+                if (!placeOrCategory.isNullOrBlank()) TagChip(placeOrCategory)
+                TagChip(
+                    if (expense.isRecurring) (expense.cadence ?: "recurring") else "one-off",
+                    background = if (expense.isRecurring) Pink else Color.White,
+                )
+                HangoutTagChip(
+                    label = if (hangoutIndex >= 0) hangouts[hangoutIndex].name else "no hangout",
+                    color = if (hangoutIndex >= 0) hangoutColor(hangoutIndex) else Color.Transparent,
+                )
+            }
+
+            DashedDivider(modifier = Modifier.padding(top = 12.dp, bottom = 11.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text(
+                    formatSplitSummary(expense),
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.weight(1f),
+                )
+                PillActionButton(
+                    label = if (isPaid) "settled" else "mark paid",
+                    background = if (isPaid) Teal else Ink,
+                    contentColor = if (isPaid) Ink else Color.White,
+                    onClick = onMarkPaid,
+                )
+                PillActionButton(label = "edit", background = Color.White, contentColor = Ink, onClick = onEdit)
             }
         }
     }
 }
 
+private val ChipTint = Color(0xFFFFD1E5)
+
 @Composable
-private fun TagChip(text: String, background: Color = MaterialTheme.colorScheme.background) {
+private fun TagChip(text: String, background: Color = ChipTint) {
     Box(
         modifier = Modifier
-            .border(1.5.dp, Ink, RoundedCornerShape(50))
-            .background(background, RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .border(2.dp, Ink, RoundedCornerShape(6.dp))
+            .background(background, RoundedCornerShape(6.dp))
+            .padding(horizontal = 7.dp, vertical = 5.dp),
     ) {
-        Text(text, style = MaterialTheme.typography.labelSmall)
+        Text(text, style = PinguCoduType.monoLabel, color = Ink)
     }
 }
 
 @Composable
-private fun OutlinedPillButton(label: String, onClick: () -> Unit) {
+private fun HangoutTagChip(label: String, color: Color) {
+    Box(
+        modifier = Modifier
+            .border(2.dp, Ink, RoundedCornerShape(50))
+            .background(color, RoundedCornerShape(50))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    ) {
+        Text(label, style = PinguCoduType.monoLabel, color = Ink)
+    }
+}
+
+@Composable
+private fun PillActionButton(
+    label: String,
+    background: Color,
+    contentColor: Color,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
     val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
-            .border(1.5.dp, Ink, RoundedCornerShape(50))
-            .combinedClickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .border(2.dp, Ink, RoundedCornerShape(50))
+            .background(background, RoundedCornerShape(50))
+            .combinedClickable(interactionSource = interactionSource, indication = null, enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        Text(label, style = MaterialTheme.typography.labelSmall)
+        Text(label, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = contentColor)
     }
 }
 
-private val HANGOUT_PALETTE = listOf(Purple, Teal, Orange, Green, Yellow, Coral)
+private val HANGOUT_PALETTE = listOf(Pink, Teal, YellowSoft)
 
-private fun hangoutColor(hangoutId: String): Color =
-    HANGOUT_PALETTE[(hangoutId.hashCode().and(Int.MAX_VALUE)) % HANGOUT_PALETTE.size]
+private fun hangoutColor(index: Int): Color = HANGOUT_PALETTE[index % HANGOUT_PALETTE.size]
 
 private fun formatCents(cents: Long): String = "₹%.2f".format(cents / 100.0)
 

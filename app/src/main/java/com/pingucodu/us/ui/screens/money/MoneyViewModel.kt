@@ -7,6 +7,7 @@ import com.pingucodu.us.data.money.AddExpenseResult
 import com.pingucodu.us.data.money.BalanceResult
 import com.pingucodu.us.data.money.CreateHangoutResult
 import com.pingucodu.us.data.money.DeleteExpenseResult
+import com.pingucodu.us.data.money.DeleteHangoutResult
 import com.pingucodu.us.data.money.ExpenseRepository
 import com.pingucodu.us.data.money.ExpensesResult
 import com.pingucodu.us.data.money.HangoutsResult
@@ -41,6 +42,7 @@ data class MoneyUiState(
     val currentUsername: String? = null,
     val statusFilter: ExpenseStatusFilter = ExpenseStatusFilter.OPEN,
     val hangoutFilter: String? = null,
+    val showNoHangoutOnly: Boolean = false,
     val errorMessage: String? = null,
     val showAddDialog: Boolean = false,
     val editingExpense: ExpenseDto? = null,
@@ -72,7 +74,12 @@ class MoneyViewModel @Inject constructor(
     }
 
     fun setHangoutFilter(hangoutId: String?) {
-        _uiState.update { it.copy(hangoutFilter = hangoutId) }
+        _uiState.update { it.copy(hangoutFilter = hangoutId, showNoHangoutOnly = false) }
+        refresh()
+    }
+
+    fun setNoHangoutFilter() {
+        _uiState.update { it.copy(hangoutFilter = null, showNoHangoutOnly = true) }
         refresh()
     }
 
@@ -170,6 +177,21 @@ class MoneyViewModel @Inject constructor(
             when (val result = expenseRepository.settleAll(hangoutFilter)) {
                 is SettleAllResult.Success -> refresh()
                 is SettleAllResult.NetworkError -> _uiState.update { it.copy(errorMessage = result.message) }
+            }
+        }
+    }
+
+    fun deleteHangout(id: String) {
+        viewModelScope.launch {
+            when (val result = expenseRepository.deleteHangout(id)) {
+                DeleteHangoutResult.Success -> {
+                    if (_uiState.value.hangoutFilter == id) {
+                        _uiState.update { it.copy(hangoutFilter = null) }
+                    }
+                    _uiState.update { it.copy(hangouts = it.hangouts.filterNot { h -> h.id == id }) }
+                    refresh()
+                }
+                is DeleteHangoutResult.NetworkError -> _uiState.update { it.copy(errorMessage = result.message) }
             }
         }
     }

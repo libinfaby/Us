@@ -33,7 +33,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.ui.theme.BorderWidth
@@ -191,7 +193,11 @@ private fun ActivityRow(item: ActivityFeedItem) {
             Text(code, style = PinguCoduType.monoLabel)
         }
         Spacer(Modifier.width(10.dp))
-        Text(item.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(
+            item.text,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+            modifier = Modifier.weight(1f),
+        )
         Spacer(Modifier.width(8.dp))
         Text(item.timeLabel, style = MaterialTheme.typography.labelSmall)
     }

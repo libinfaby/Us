@@ -265,11 +265,10 @@ expensesRoutes.post('/:id/settle', async (c) => {
   const existing = await c.env.DB.prepare('SELECT * FROM expenses WHERE id = ?').bind(id).first<ExpenseRow>();
   if (!existing) return c.json({ error: 'expense not found' }, 404);
 
-  if (existing.status !== 'settled') {
-    await c.env.DB.prepare("UPDATE expenses SET status = 'settled', updated_at = datetime('now') WHERE id = ?")
-      .bind(id)
-      .run();
-  }
+  const nextStatus = existing.status === 'settled' ? 'open' : 'settled';
+  await c.env.DB.prepare("UPDATE expenses SET status = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(nextStatus, id)
+    .run();
   const row = await c.env.DB.prepare('SELECT * FROM expenses WHERE id = ?').bind(id).first<ExpenseRow>();
   return c.json(toExpenseJson(row!));
 });

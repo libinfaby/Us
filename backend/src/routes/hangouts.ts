@@ -29,3 +29,15 @@ hangoutsRoutes.post('/', async (c) => {
   const row = await c.env.DB.prepare('SELECT * FROM hangouts WHERE id = ?').bind(id).first<HangoutRow>();
   return c.json(toHangoutJson(row!), 201);
 });
+
+hangoutsRoutes.delete('/:id', async (c) => {
+  const id = c.req.param('id');
+  const existing = await c.env.DB.prepare('SELECT * FROM hangouts WHERE id = ?').bind(id).first<HangoutRow>();
+  if (!existing) return c.json({ error: 'hangout not found' }, 404);
+
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE expenses SET hangout_id = NULL WHERE hangout_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM hangouts WHERE id = ?').bind(id),
+  ]);
+  return c.body(null, 204);
+});

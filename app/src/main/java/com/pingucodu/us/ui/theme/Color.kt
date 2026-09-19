@@ -21,7 +21,7 @@ val Purple = Color(0xFF9B6BFF)
 val Orange = Color(0xFFFF8A3D)
 
 val DescriptionGrey = Color(0xFF5D585A)
-val PlaceholderGrey = Color(0xFF7E7E7E)
+val PlaceholderGrey = Color(0xFF757575)
 
 /**
  * Semantic tokens for the app's own neo-brutalist components (cards, chips, tab bar).

@@ -70,6 +70,12 @@ interface ApiService {
         @Body request: CreateHangoutRequest,
     ): Response<HangoutDto>
 
+    @DELETE("hangouts/{id}")
+    suspend fun deleteHangout(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+    ): Response<Unit>
+
     @GET("cycle/status")
     suspend fun getCycleStatus(@Header("Authorization") bearerToken: String): Response<CycleStatusDto>
 
