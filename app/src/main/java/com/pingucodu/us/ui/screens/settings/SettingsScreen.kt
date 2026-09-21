@@ -82,7 +82,7 @@ fun SettingsScreen(
         Text("TEXT SIZE", style = PinguCoduType.monoLabel)
         Spacer(Modifier.height(4.dp))
         Text(
-            "this only changes pingu & codu - your phone's own text size setting is unaffected.",
+            "changes the font size across the entire app.",
             style = MaterialTheme.typography.bodySmall,
             color = DescriptionGrey,
         )

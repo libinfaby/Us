@@ -271,7 +271,7 @@ fun ExpenseFormDialog(
                     NeoField(
                         value = note,
                         onValueChange = { note = it },
-                        placeholder = "note — what's this about?",
+                        placeholder = "what's this about?",
                         textStyle = MaterialTheme.typography.titleMedium.copy(color = Ink),
                         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
                         minLines = 2,
@@ -333,7 +333,7 @@ fun ExpenseFormDialog(
                             NeoField(
                                 value = newHangoutName,
                                 onValueChange = { newHangoutName = it },
-                                placeholder = "e.g. munnar trip, sunday meet",
+                                placeholder = "new hangout",
                                 textStyle = MaterialTheme.typography.titleMedium.copy(color = Ink),
                                 contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
                                 modifier = Modifier.weight(1f),
@@ -471,7 +471,7 @@ fun ExpenseFormDialog(
                         NeoField(
                             value = place,
                             onValueChange = { place = it },
-                            placeholder = "place (optional)",
+                            placeholder = "place",
                             textStyle = PinguCoduType.amount.copy(color = Ink),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
                             modifier = Modifier.weight(1f),
@@ -844,7 +844,7 @@ private fun NavArrowButton(symbol: String, enabled: Boolean = true, onClick: () 
 
 @Composable
 private fun DayCell(date: LocalDate, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(9.dp)
     Box(
         modifier = Modifier
             .fillMaxSize()

@@ -70,10 +70,39 @@ interface ApiService {
         @Body request: CreateHangoutRequest,
     ): Response<HangoutDto>
 
+    @PATCH("hangouts/{id}")
+    suspend fun updateHangout(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+        @Body request: UpdateHangoutRequest,
+    ): Response<HangoutDto>
+
     @DELETE("hangouts/{id}")
     suspend fun deleteHangout(
         @Header("Authorization") bearerToken: String,
         @Path("id") id: String,
+    ): Response<Unit>
+
+    @POST("hangouts/{id}/memories")
+    suspend fun addHangoutMemory(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+        @Body request: HangoutMemoryRequest,
+    ): Response<HangoutMemoryDto>
+
+    @PATCH("hangouts/{id}/memories/{memoryId}")
+    suspend fun updateHangoutMemory(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+        @Path("memoryId") memoryId: String,
+        @Body request: HangoutMemoryRequest,
+    ): Response<HangoutMemoryDto>
+
+    @DELETE("hangouts/{id}/memories/{memoryId}")
+    suspend fun deleteHangoutMemory(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+        @Path("memoryId") memoryId: String,
     ): Response<Unit>
 
     @GET("cycle/status")
@@ -92,6 +121,21 @@ interface ApiService {
     suspend fun deleteCycleLog(
         @Header("Authorization") bearerToken: String,
         @Path("id") id: String,
+    ): Response<Unit>
+
+    @GET("cycle/observations")
+    suspend fun getObservations(@Header("Authorization") bearerToken: String): Response<List<CycleObservationDto>>
+
+    @POST("cycle/observations")
+    suspend fun createObservation(
+        @Header("Authorization") bearerToken: String,
+        @Body request: CreateObservationRequest,
+    ): Response<CycleObservationDto>
+
+    @DELETE("cycle/observations/{date}")
+    suspend fun deleteObservation(
+        @Header("Authorization") bearerToken: String,
+        @Path("date") date: String,
     ): Response<Unit>
 
     @GET("stash")

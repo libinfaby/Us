@@ -70,7 +70,6 @@ class HomeViewModel @Inject constructor(
                 _uiState.update { it.copy(username = username) }
             }
         }
-        refresh()
     }
 
     fun refresh() {
@@ -118,7 +117,8 @@ class HomeViewModel @Inject constructor(
             add(ActivityFeedItem(ActivitySource.MONEY, "$openExpenseCount $plural still open", "now"))
         }
         if (cycleStatus?.currentDay != null) {
-            add(ActivityFeedItem(ActivitySource.CYCLE, "cycle day ${cycleStatus.currentDay} · ${cycleStatus.statusLabel}", "today"))
+            val phaseLabel = cycleStatus.phase ?: cycleStatus.statusLabel
+            add(ActivityFeedItem(ActivitySource.CYCLE, "cycle day ${cycleStatus.currentDay} · $phaseLabel", "today"))
         }
         stashItems?.sortedByDescending { it.createdAt }?.take(4)?.forEach { item ->
             val text = if (item.type == "todo") item.title else "${item.author} shared \"${item.title}\""

@@ -41,10 +41,34 @@ data class ExpenseRequest(
 )
 
 @Serializable
-data class HangoutDto(val id: String, val name: String, val createdAt: String)
+data class HangoutDto(
+    val id: String,
+    val name: String,
+    val startDate: String? = null,
+    val endDate: String? = null,
+    val createdAt: String,
+    val totalCents: Long = 0,
+    val memories: List<HangoutMemoryDto> = emptyList(),
+)
 
 @Serializable
-data class CreateHangoutRequest(val name: String)
+data class HangoutMemoryDto(
+    val id: String,
+    val hangoutId: String,
+    val author: String,
+    val text: String,
+    val createdAt: String,
+)
+
+@Serializable
+data class CreateHangoutRequest(val name: String, val startDate: String? = null, val endDate: String? = null)
+
+/** Shared shape for editing a hangout's name/dates (PATCH). */
+@Serializable
+data class UpdateHangoutRequest(val name: String? = null, val startDate: String? = null, val endDate: String? = null)
+
+@Serializable
+data class HangoutMemoryRequest(val text: String)
 
 @Serializable
 data class SettleAllRequest(val hangoutId: String? = null)

@@ -30,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,8 +68,11 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
     val uiState by viewModel.uiState.collectAsState()
     var expenseToDelete by remember { mutableStateOf<ExpenseDto?>(null) }
     var expenseToTogglePaid by remember { mutableStateOf<ExpenseDto?>(null) }
-    var hangoutToDelete by remember { mutableStateOf<HangoutDto?>(null) }
     var confirmSettleAll by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+    }
 
     Box(modifier = modifier.fillMaxSize().background(PinkTint)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -90,7 +94,6 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
                 showNoHangoutOnly = uiState.showNoHangoutOnly,
                 onSelect = viewModel::setHangoutFilter,
                 onSelectNoHangout = viewModel::setNoHangoutFilter,
-                onLongPressHangout = { hangoutToDelete = it },
             )
             Spacer(Modifier.height(10.dp))
 
@@ -122,7 +125,7 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
                 }
                 else -> {
                     LazyColumn(
-                        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 110.dp),
+                        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 210.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         items(displayedExpenses, key = { it.id }) { expense ->
@@ -208,22 +211,6 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
         )
     }
 
-    if (hangoutToDelete != null) {
-        val target = hangoutToDelete!!
-        NeoConfirmDialog(
-            title = "delete this?",
-            message = "\"${target.name}\" goes away for good. its expenses keep their date and amount but lose this hangout.",
-            confirmLabel = "delete",
-            badgeLabel = "no undo",
-            accentColor = Pink,
-            onConfirm = {
-                viewModel.deleteHangout(target.id)
-                hangoutToDelete = null
-            },
-            onDismiss = { hangoutToDelete = null },
-        )
-    }
-
     if (confirmSettleAll) {
         NeoConfirmDialog(
             title = "settle all?",
@@ -305,7 +292,6 @@ private fun HangoutFilterRow(
     showNoHangoutOnly: Boolean,
     onSelect: (String?) -> Unit,
     onSelectNoHangout: () -> Unit,
-    onLongPressHangout: (HangoutDto) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -326,7 +312,6 @@ private fun HangoutFilterRow(
                 selected = selectedHangoutId == h.id,
                 dot = { DotIndicator(color = hangoutColor(index), shape = RoundedCornerShape(3.dp)) },
                 onClick = { onSelect(h.id) },
-                onLongClick = { onLongPressHangout(h) },
             )
         }
         Pill(

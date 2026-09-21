@@ -7,7 +7,10 @@ import com.pingucodu.us.data.network.ErrorResponse
 import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.data.network.ExpenseRequest
 import com.pingucodu.us.data.network.HangoutDto
+import com.pingucodu.us.data.network.HangoutMemoryDto
+import com.pingucodu.us.data.network.HangoutMemoryRequest
 import com.pingucodu.us.data.network.SettleAllRequest
+import com.pingucodu.us.data.network.UpdateHangoutRequest
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import retrofit2.Response
@@ -66,6 +69,29 @@ sealed interface CreateHangoutResult {
 sealed interface DeleteHangoutResult {
     data object Success : DeleteHangoutResult
     data class NetworkError(val message: String) : DeleteHangoutResult
+}
+
+sealed interface UpdateHangoutResult {
+    data class Success(val hangout: HangoutDto) : UpdateHangoutResult
+    data class ValidationError(val message: String) : UpdateHangoutResult
+    data class NetworkError(val message: String) : UpdateHangoutResult
+}
+
+sealed interface AddMemoryResult {
+    data class Success(val memory: HangoutMemoryDto) : AddMemoryResult
+    data class ValidationError(val message: String) : AddMemoryResult
+    data class NetworkError(val message: String) : AddMemoryResult
+}
+
+sealed interface UpdateMemoryResult {
+    data class Success(val memory: HangoutMemoryDto) : UpdateMemoryResult
+    data class ValidationError(val message: String) : UpdateMemoryResult
+    data class NetworkError(val message: String) : UpdateMemoryResult
+}
+
+sealed interface DeleteMemoryResult {
+    data object Success : DeleteMemoryResult
+    data class NetworkError(val message: String) : DeleteMemoryResult
 }
 
 @Singleton
@@ -197,10 +223,10 @@ class ExpenseRepository @Inject constructor(
         }
     }
 
-    suspend fun createHangout(name: String): CreateHangoutResult {
+    suspend fun createHangout(name: String, startDate: String? = null, endDate: String? = null): CreateHangoutResult {
         val token = bearerToken() ?: return CreateHangoutResult.NetworkError("not logged in")
         val response = try {
-            api.createHangout(token, CreateHangoutRequest(name))
+            api.createHangout(token, CreateHangoutRequest(name, startDate, endDate))
         } catch (e: IOException) {
             return CreateHangoutResult.NetworkError(e.message ?: "couldn't reach the server")
         }
@@ -212,6 +238,21 @@ class ExpenseRepository @Inject constructor(
         }
     }
 
+    suspend fun updateHangout(id: String, name: String, startDate: String?, endDate: String?): UpdateHangoutResult {
+        val token = bearerToken() ?: return UpdateHangoutResult.NetworkError("not logged in")
+        val response = try {
+            api.updateHangout(token, id, UpdateHangoutRequest(name, startDate, endDate))
+        } catch (e: IOException) {
+            return UpdateHangoutResult.NetworkError(e.message ?: "couldn't reach the server")
+        }
+        val body = response.body()
+        return when {
+            response.isSuccessful && body != null -> UpdateHangoutResult.Success(body)
+            response.code() == 400 -> UpdateHangoutResult.ValidationError(errorMessage(response))
+            else -> UpdateHangoutResult.NetworkError(errorMessage(response))
+        }
+    }
+
     suspend fun deleteHangout(id: String): DeleteHangoutResult {
         val token = bearerToken() ?: return DeleteHangoutResult.NetworkError("not logged in")
         val response = try {
@@ -220,5 +261,45 @@ class ExpenseRepository @Inject constructor(
             return DeleteHangoutResult.NetworkError(e.message ?: "couldn't reach the server")
         }
         return if (response.isSuccessful) DeleteHangoutResult.Success else DeleteHangoutResult.NetworkError(errorMessage(response))
+    }
+
+    suspend fun addMemory(hangoutId: String, text: String): AddMemoryResult {
+        val token = bearerToken() ?: return AddMemoryResult.NetworkError("not logged in")
+        val response = try {
+            api.addHangoutMemory(token, hangoutId, HangoutMemoryRequest(text))
+        } catch (e: IOException) {
+            return AddMemoryResult.NetworkError(e.message ?: "couldn't reach the server")
+        }
+        val body = response.body()
+        return when {
+            response.isSuccessful && body != null -> AddMemoryResult.Success(body)
+            response.code() == 400 -> AddMemoryResult.ValidationError(errorMessage(response))
+            else -> AddMemoryResult.NetworkError(errorMessage(response))
+        }
+    }
+
+    suspend fun updateMemory(hangoutId: String, memoryId: String, text: String): UpdateMemoryResult {
+        val token = bearerToken() ?: return UpdateMemoryResult.NetworkError("not logged in")
+        val response = try {
+            api.updateHangoutMemory(token, hangoutId, memoryId, HangoutMemoryRequest(text))
+        } catch (e: IOException) {
+            return UpdateMemoryResult.NetworkError(e.message ?: "couldn't reach the server")
+        }
+        val body = response.body()
+        return when {
+            response.isSuccessful && body != null -> UpdateMemoryResult.Success(body)
+            response.code() == 400 -> UpdateMemoryResult.ValidationError(errorMessage(response))
+            else -> UpdateMemoryResult.NetworkError(errorMessage(response))
+        }
+    }
+
+    suspend fun deleteMemory(hangoutId: String, memoryId: String): DeleteMemoryResult {
+        val token = bearerToken() ?: return DeleteMemoryResult.NetworkError("not logged in")
+        val response = try {
+            api.deleteHangoutMemory(token, hangoutId, memoryId)
+        } catch (e: IOException) {
+            return DeleteMemoryResult.NetworkError(e.message ?: "couldn't reach the server")
+        }
+        return if (response.isSuccessful) DeleteMemoryResult.Success else DeleteMemoryResult.NetworkError(errorMessage(response))
     }
 }

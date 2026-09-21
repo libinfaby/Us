@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Split-heart outline only (no circle/dots - those live in ic_launcher_background). Nested
+     group replays the source artwork's own translate+scale, wrapped in an outer pivot-scale
+     that shrinks it into the 66dp safe zone on every adaptive icon mask. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <group
+        android:pivotX="126.3"
+        android:pivotY="136.5"
+        android:scaleX="0.68"
+        android:scaleY="0.68">
+        <group
+            android:translateX="16"
+            android:translateY="16"
+            android:scaleX="1.697"
+            android:scaleY="1.697">
+            <path
+                android:fillColor="#FF4FA3"
+                android:strokeColor="#111111"
+                android:strokeWidth="7"
+                android:strokeLineJoin="round"
+                android:strokeLineCap="round"
+                android:pathData="M74,118 C74,118 22,90 22,58 C22,41 35,30 49,32 C58,33.5 66,39 72,47 C77,38 85,30 97,31 C110,32 120,43 118,59 C114,91 74,118 74,118 Z" />
+            <path
+                android:fillColor="#FFF1F7"
+                android:strokeColor="#111111"
+                android:strokeWidth="7"
+                android:strokeLineJoin="round"
+                android:strokeLineCap="round"
+                android:pathData="M62,112 C62,112 10,84 10,52 C10,35 23,24 37,26 C46,27.5 54,33 60,41 C65,32 73,24 85,25 C98,26 108,37 106,53 C102,85 62,112 62,112 Z" />
+        </group>
+    </group>
+</vector>

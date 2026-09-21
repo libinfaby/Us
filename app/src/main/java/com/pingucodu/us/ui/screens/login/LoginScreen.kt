@@ -83,10 +83,10 @@ fun LoginScreen(modifier: Modifier = Modifier, viewModel: AuthViewModel = hiltVi
             LogoSwatch(YellowSoft, RoundedCornerShape(4.dp), rotationDegrees = 45f)
         }
         Spacer(Modifier.height(16.dp))
-        Text("pingu\n& codu", style = MaterialTheme.typography.displayLarge)
+        Text("an app for\npingu\n& codu", style = MaterialTheme.typography.displayLarge)
         Spacer(Modifier.height(12.dp))
         Text(
-            "two users. one wallet-ish. no more calculator in the whatsapp group.",
+            "a little app for the two of us, and everything that comes with it.",
             style = MaterialTheme.typography.bodyMedium,
             color = DescriptionGrey,
         )

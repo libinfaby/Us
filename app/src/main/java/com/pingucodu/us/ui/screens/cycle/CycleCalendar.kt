@@ -10,6 +10,7 @@ import kotlin.math.roundToInt
 
 private val ISO: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
 private const val PERIOD_LEN = 5L
+private const val PMS_WINDOW_DAYS = 5L
 
 /** One cell in the month grid. Null slots (returned as leading padding) render as blank space. */
 data class CycleDay(
@@ -17,6 +18,7 @@ data class CycleDay(
     val hasLog: Boolean,
     val isFertile: Boolean,
     val isPredictedPeriod: Boolean,
+    val isPmsWindow: Boolean,
     val isToday: Boolean,
 )
 
@@ -89,6 +91,7 @@ fun buildCalendarDays(
     val predictedStart = predictedNextDate?.let { runCatching { LocalDate.parse(it, ISO) }.getOrNull() }
     val fertileRange = predictedStart?.let { it.minusDays(17)..it.minusDays(12) }
     val periodRange = predictedStart?.let { it..it.plusDays(PERIOD_LEN - 1) }
+    val pmsRange = predictedStart?.let { it.minusDays(PMS_WINDOW_DAYS)..it.minusDays(1) }
 
     val leading = month.atDay(1).dayOfWeek.value % 7
     val days = (1..month.lengthOfMonth()).map { dayOfMonth ->
@@ -98,6 +101,7 @@ fun buildCalendarDays(
             hasLog = loggedDates.contains(date),
             isFertile = fertileRange?.contains(date) == true,
             isPredictedPeriod = periodRange?.contains(date) == true && date.isAfter(today),
+            isPmsWindow = pmsRange?.contains(date) == true && date.isAfter(today),
             isToday = date == today,
         )
     }
