@@ -4,6 +4,8 @@ import com.pingucodu.us.data.local.TokenStore
 import com.pingucodu.us.data.network.ApiService
 import com.pingucodu.us.data.network.ChangePinRequest
 import com.pingucodu.us.data.network.LoginRequest
+import com.pingucodu.us.data.network.toUserMessage
+import com.pingucodu.us.data.notifications.DeviceTokenRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -28,6 +30,7 @@ sealed interface ChangePinResult {
 class AuthRepository @Inject constructor(
     private val api: ApiService,
     private val tokenStore: TokenStore,
+    private val deviceTokenRepository: DeviceTokenRepository,
 ) {
     /** Non-null only once both a token and username are persisted. */
     val loggedInUsername: Flow<String?> =
@@ -39,13 +42,14 @@ class AuthRepository @Inject constructor(
         val response = try {
             api.login(LoginRequest(username, pin))
         } catch (e: IOException) {
-            return LoginResult.NetworkError(e.message ?: "couldn't reach the server")
+            return LoginResult.NetworkError(e.toUserMessage())
         }
 
         return when (response.code()) {
             200 -> {
                 val body = response.body() ?: return LoginResult.NetworkError("empty response")
                 tokenStore.save(body.token, body.username)
+                deviceTokenRepository.registerCurrentToken()
                 LoginResult.Success
             }
             400 -> LoginResult.PinNotSetUp
@@ -59,7 +63,7 @@ class AuthRepository @Inject constructor(
         val response = try {
             api.changePin("Bearer $token", ChangePinRequest(currentPin, newPin))
         } catch (e: IOException) {
-            return ChangePinResult.NetworkError(e.message ?: "couldn't reach the server")
+            return ChangePinResult.NetworkError(e.toUserMessage())
         }
 
         return when (response.code()) {

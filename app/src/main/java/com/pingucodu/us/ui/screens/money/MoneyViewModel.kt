@@ -67,18 +67,29 @@ class MoneyViewModel @Inject constructor(
         refresh()
     }
 
+    // Switching a filter swaps in a whole new data set, not a refresh of what's on screen -
+    // drop the stale expenses right away so the list falls back to skeleton cards instead of
+    // briefly showing the previous filter's expenses under a spurious pull-to-refresh spinner.
     fun setStatusFilter(filter: ExpenseStatusFilter) {
-        _uiState.update { it.copy(statusFilter = filter) }
+        _uiState.update { it.copy(statusFilter = filter, expenses = emptyList()) }
         refresh()
     }
 
     fun setHangoutFilter(hangoutId: String?) {
-        _uiState.update { it.copy(hangoutFilter = hangoutId, showNoHangoutOnly = false) }
+        _uiState.update { it.copy(hangoutFilter = hangoutId, showNoHangoutOnly = false, expenses = emptyList()) }
         refresh()
     }
 
     fun setNoHangoutFilter() {
-        _uiState.update { it.copy(hangoutFilter = null, showNoHangoutOnly = true) }
+        _uiState.update { it.copy(hangoutFilter = null, showNoHangoutOnly = true, expenses = emptyList()) }
+        refresh()
+    }
+
+    /** Called when the Money tab (re)enters composition - drops the stale list first so the
+     * screen shows skeleton cards instead of the pull-to-refresh spinner, which should only
+     * appear when the user actually pulls down to refresh. */
+    fun refreshOnEntry() {
+        _uiState.update { it.copy(expenses = emptyList()) }
         refresh()
     }
 

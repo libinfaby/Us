@@ -5,6 +5,7 @@ import { expensesRoutes } from './routes/expenses';
 import { hangoutsRoutes } from './routes/hangouts';
 import { cycleRoutes } from './routes/cycle';
 import { stashRoutes } from './routes/stash';
+import { devicesRoutes } from './routes/devices';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -14,5 +15,6 @@ app.route('/expenses', expensesRoutes);
 app.route('/hangouts', hangoutsRoutes);
 app.route('/cycle', cycleRoutes);
 app.route('/stash', stashRoutes);
+app.route('/devices', devicesRoutes);
 
 export default app;

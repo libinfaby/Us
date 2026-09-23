@@ -8,6 +8,7 @@ import com.pingucodu.us.data.network.CycleLogDto
 import com.pingucodu.us.data.network.CycleObservationDto
 import com.pingucodu.us.data.network.CycleStatusDto
 import com.pingucodu.us.data.network.ErrorResponse
+import com.pingucodu.us.data.network.toUserMessage
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import retrofit2.Response
@@ -75,7 +76,7 @@ class CycleRepository @Inject constructor(
         val response = try {
             api.getCycleStatus(token)
         } catch (e: IOException) {
-            return CycleStatusResult.NetworkError(e.message ?: "couldn't reach the server")
+            return CycleStatusResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return if (response.isSuccessful && body != null) {
@@ -90,7 +91,7 @@ class CycleRepository @Inject constructor(
         val response = try {
             api.getCycleLogs(token)
         } catch (e: IOException) {
-            return CycleLogsResult.NetworkError(e.message ?: "couldn't reach the server")
+            return CycleLogsResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -111,7 +112,7 @@ class CycleRepository @Inject constructor(
         val response = try {
             api.createCycleLog(token, CreateCycleLogRequest(logDate, flow, note, tags, partnerNote))
         } catch (e: IOException) {
-            return AddCycleLogResult.NetworkError(e.message ?: "couldn't reach the server")
+            return AddCycleLogResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -126,7 +127,7 @@ class CycleRepository @Inject constructor(
         val response = try {
             api.deleteCycleLog(token, id)
         } catch (e: IOException) {
-            return DeleteCycleLogResult.NetworkError(e.message ?: "couldn't reach the server")
+            return DeleteCycleLogResult.NetworkError(e.toUserMessage())
         }
         return when {
             response.isSuccessful -> DeleteCycleLogResult.Success
@@ -140,7 +141,7 @@ class CycleRepository @Inject constructor(
         val response = try {
             api.getObservations(token)
         } catch (e: IOException) {
-            return ObservationsResult.NetworkError(e.message ?: "couldn't reach the server")
+            return ObservationsResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -155,7 +156,7 @@ class CycleRepository @Inject constructor(
         val response = try {
             api.createObservation(token, CreateObservationRequest(tags, note, date))
         } catch (e: IOException) {
-            return AddObservationResult.NetworkError(e.message ?: "couldn't reach the server")
+            return AddObservationResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -170,7 +171,7 @@ class CycleRepository @Inject constructor(
         val response = try {
             api.deleteObservation(token, date)
         } catch (e: IOException) {
-            return DeleteObservationResult.NetworkError(e.message ?: "couldn't reach the server")
+            return DeleteObservationResult.NetworkError(e.toUserMessage())
         }
         return when {
             response.isSuccessful -> DeleteObservationResult.Success

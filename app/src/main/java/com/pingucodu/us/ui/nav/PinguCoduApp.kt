@@ -29,6 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -58,26 +59,41 @@ import com.pingucodu.us.ui.theme.Pink
 import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.PinkTint
 import com.pingucodu.us.ui.theme.hardShadow
+import com.pingucodu.us.ui.util.LocalNameMask
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun PinguCoduApp(authViewModel: AuthViewModel = hiltViewModel()) {
+fun PinguCoduApp(
+    pendingRoute: String? = null,
+    onPendingRouteConsumed: () -> Unit = {},
+    authViewModel: AuthViewModel = hiltViewModel(),
+) {
     Surface(modifier = Modifier.fillMaxSize(), color = PinkTint) {
         when (val status = authViewModel.authStatus.collectAsState().value) {
             AuthStatus.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Ink)
             }
             AuthStatus.LoggedOut -> LoginScreen()
-            is AuthStatus.LoggedIn -> MainScreen(username = status.username, onLogout = authViewModel::logout)
+            is AuthStatus.LoggedIn -> MainScreen(
+                username = status.username,
+                onLogout = authViewModel::logout,
+                pendingRoute = pendingRoute,
+                onPendingRouteConsumed = onPendingRouteConsumed,
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MainScreen(username: String, onLogout: () -> Unit) {
+private fun MainScreen(
+    username: String,
+    onLogout: () -> Unit,
+    pendingRoute: String?,
+    onPendingRouteConsumed: () -> Unit,
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -88,6 +104,16 @@ private fun MainScreen(username: String, onLogout: () -> Unit) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true
             restoreState = true
+        }
+    }
+
+    // A tapped notification hands us a route (e.g. "money") via MainActivity's intent extras;
+    // jump there once and clear it so recomposition/back-nav doesn't re-trigger the jump.
+    LaunchedEffect(pendingRoute) {
+        val tab = Tab.entries.firstOrNull { it.route == pendingRoute }
+        if (tab != null) {
+            navigateToTab(tab)
+            onPendingRouteConsumed()
         }
     }
 
@@ -139,6 +165,7 @@ private fun MainScreen(username: String, onLogout: () -> Unit) {
 
 @Composable
 private fun AppHeader(username: String, onSettings: () -> Unit, onLogout: () -> Unit) {
+    val displayName = LocalNameMask.current.resolve(username) ?: username
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -155,11 +182,11 @@ private fun AppHeader(username: String, onSettings: () -> Unit, onLogout: () -> 
                 .border(BorderWidth, Ink, AvatarShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text(username.take(1).uppercase(), style = MaterialTheme.typography.titleLarge)
+            Text(displayName.take(1).uppercase(), style = MaterialTheme.typography.titleLarge)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("hey $username", style = MaterialTheme.typography.titleLarge)
+            Text("hey $displayName", style = MaterialTheme.typography.titleLarge)
             Text(todayLabel(), style = MaterialTheme.typography.bodySmall)
         }
         val settingsInteractionSource = remember { MutableInteractionSource() }

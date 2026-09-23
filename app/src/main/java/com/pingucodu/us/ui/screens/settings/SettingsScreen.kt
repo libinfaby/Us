@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -27,6 +28,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pingucodu.us.ui.auth.AuthStatus
 import com.pingucodu.us.ui.auth.AuthViewModel
 import com.pingucodu.us.ui.settings.SettingsViewModel
 import com.pingucodu.us.ui.theme.BorderWidth
@@ -64,6 +68,10 @@ fun SettingsScreen(
     authViewModel: AuthViewModel = hiltViewModel(),
 ) {
     val fontScaleLevel by viewModel.fontScaleLevel.collectAsState()
+    val maskNamesEnabled by viewModel.maskNamesEnabled.collectAsState()
+    val maskLabelPingu by viewModel.maskLabelPingu.collectAsState()
+    val maskLabelCodu by viewModel.maskLabelCodu.collectAsState()
+    val authStatus by authViewModel.authStatus.collectAsState()
 
     Column(
         modifier = modifier
@@ -101,9 +109,114 @@ fun SettingsScreen(
         DashedDivider()
         Spacer(Modifier.height(20.dp))
 
+        MaskNamesSection(
+            enabled = maskNamesEnabled,
+            onEnabledChange = viewModel::setMaskNamesEnabled,
+            selfLabel = maskLabelForSelf(authStatus, maskLabelPingu, maskLabelCodu),
+            partnerLabel = maskLabelForPartner(authStatus, maskLabelPingu, maskLabelCodu),
+            onSelfLabelChange = { setMaskLabelForSelf(authStatus, it, viewModel) },
+            onPartnerLabelChange = { setMaskLabelForPartner(authStatus, it, viewModel) },
+        )
+        Spacer(Modifier.height(24.dp))
+        DashedDivider()
+        Spacer(Modifier.height(20.dp))
+
         ChangePinSection(viewModel = authViewModel)
         Spacer(Modifier.height(32.dp))
     }
+}
+
+private fun maskLabelForSelf(authStatus: AuthStatus, pinguLabel: String, coduLabel: String): String =
+    if (authStatus is AuthStatus.LoggedIn && authStatus.username == "codu") coduLabel else pinguLabel
+
+private fun maskLabelForPartner(authStatus: AuthStatus, pinguLabel: String, coduLabel: String): String =
+    if (authStatus is AuthStatus.LoggedIn && authStatus.username == "codu") pinguLabel else coduLabel
+
+private fun setMaskLabelForSelf(authStatus: AuthStatus, label: String, viewModel: SettingsViewModel) {
+    if (authStatus is AuthStatus.LoggedIn && authStatus.username == "codu") {
+        viewModel.setMaskLabelCodu(label)
+    } else {
+        viewModel.setMaskLabelPingu(label)
+    }
+}
+
+private fun setMaskLabelForPartner(authStatus: AuthStatus, label: String, viewModel: SettingsViewModel) {
+    if (authStatus is AuthStatus.LoggedIn && authStatus.username == "codu") {
+        viewModel.setMaskLabelPingu(label)
+    } else {
+        viewModel.setMaskLabelCodu(label)
+    }
+}
+
+@Composable
+private fun MaskNamesSection(
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    selfLabel: String,
+    partnerLabel: String,
+    onSelfLabelChange: (String) -> Unit,
+    onPartnerLabelChange: (String) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("MASK NAMES", style = PinguCoduType.monoLabel)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "swap your private names for placeholders when showing this app to friends.",
+                style = MaterialTheme.typography.bodySmall,
+                color = DescriptionGrey,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = enabled,
+            onCheckedChange = onEnabledChange,
+            colors = SwitchDefaults.colors(checkedThumbColor = Ink, checkedTrackColor = Pink),
+        )
+    }
+
+    if (enabled) {
+        Spacer(Modifier.height(16.dp))
+        Text("your name", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(6.dp))
+        MaskLabelField(persistedValue = selfLabel, onValueChange = onSelfLabelChange)
+        Spacer(Modifier.height(16.dp))
+        Text("partner's name", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.height(6.dp))
+        MaskLabelField(persistedValue = partnerLabel, onValueChange = onPartnerLabelChange)
+    }
+}
+
+/**
+ * A text field whose displayed value is local UI state, not bound directly to [persistedValue].
+ * [persistedValue] round-trips through a DataStore write on every keystroke (see [onValueChange]),
+ * so binding the field straight to it causes the field to briefly show a stale value between the
+ * keystroke and the write landing - Compose then treats that as an external change and resets the
+ * cursor to the start. Local state is seeded from [persistedValue] until the user edits it, after
+ * which local state is authoritative for the rest of this composition.
+ */
+@Composable
+private fun MaskLabelField(persistedValue: String, onValueChange: (String) -> Unit) {
+    var edited by remember { mutableStateOf(false) }
+    var text by remember { mutableStateOf(persistedValue) }
+    if (!edited && text != persistedValue) {
+        text = persistedValue
+    }
+    OutlinedTextField(
+        value = text,
+        onValueChange = {
+            edited = true
+            text = it
+            onValueChange(it)
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Ink, focusedBorderColor = Ink),
+    )
 }
 
 @Composable

@@ -26,9 +26,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -54,9 +54,12 @@ import com.pingucodu.us.ui.theme.Pink
 import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.PinkTint
 import com.pingucodu.us.ui.theme.NeoConfirmDialog
+import com.pingucodu.us.ui.theme.SkeletonExpenseCard
 import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.YellowSoft
 import com.pingucodu.us.ui.theme.hardShadow
+import com.pingucodu.us.ui.util.LocalNameMask
+import com.pingucodu.us.ui.util.NameMask
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -71,10 +74,15 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
     var confirmSettleAll by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        viewModel.refresh()
+        viewModel.refreshOnEntry()
     }
 
     Box(modifier = modifier.fillMaxSize().background(PinkTint)) {
+        PullToRefreshBox(
+            isRefreshing = uiState.isLoading && uiState.expenses.isNotEmpty(),
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
         Column(modifier = Modifier.fillMaxSize()) {
             BalanceHeaderCard(
                 net = uiState.net,
@@ -114,8 +122,13 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
 
             when {
                 uiState.isLoading && uiState.expenses.isEmpty() -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Ink)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 210.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        repeat(3) { SkeletonExpenseCard() }
                     }
                 }
                 displayedExpenses.isEmpty() -> {
@@ -141,6 +154,7 @@ fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltV
                     }
                 }
             }
+        }
         }
 
         Box(
@@ -234,11 +248,12 @@ private fun BalanceHeaderCard(
 ) {
     val myNet = currentUsername?.let { net[it] } ?: 0
     val other = net.keys.firstOrNull { it != currentUsername }
+    val otherLabel = LocalNameMask.current.resolve(other)
 
     val headline = when {
         myNet == 0L || other == null -> "all settled up"
-        myNet > 0 -> "$other owes you"
-        else -> "you owe $other"
+        myNet > 0 -> "$otherLabel owes you"
+        else -> "you owe $otherLabel"
     }
     val amount = if (myNet == 0L || other == null) null else formatCents(kotlin.math.abs(myNet))
 
@@ -373,6 +388,7 @@ private fun ExpenseCard(
     val hangoutIndex = expense.hangoutId?.let { hid -> hangouts.indexOfFirst { it.id == hid } } ?: -1
     val stripeColor = if (isPaid) Teal else Pink
     val shape = RoundedCornerShape(18.dp)
+    val nameMask = LocalNameMask.current
 
     Column(
         modifier = Modifier
@@ -422,7 +438,7 @@ private fun ExpenseCard(
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text(
-                    formatSplitSummary(expense),
+                    formatSplitSummary(expense, nameMask),
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.weight(1f),
                 )
@@ -496,14 +512,15 @@ private fun formatShortDate(isoDate: String): String = try {
     isoDate
 }
 
-private fun formatSplitSummary(expense: ExpenseDto): String {
+private fun formatSplitSummary(expense: ExpenseDto, nameMask: NameMask): String {
     val paidBy = expense.paidBy
+    val paidByLabel = nameMask.resolve(paidBy)
     return if (expense.splitType == "custom") {
         val pingu = expense.split["pingu"] ?: 0
         val codu = expense.split["codu"] ?: 0
-        "$paidBy paid · pingu ${formatCents(pingu)} / codu ${formatCents(codu)}"
+        "$paidByLabel paid · ${nameMask.resolve("pingu")} ${formatCents(pingu)} / ${nameMask.resolve("codu")} ${formatCents(codu)}"
     } else {
         val half = expense.split[paidBy] ?: (expense.amountCents / 2)
-        "$paidBy paid · split 50/50 · ${formatCents(half)} each"
+        "$paidByLabel paid · split 50/50 · ${formatCents(half)} each"
     }
 }

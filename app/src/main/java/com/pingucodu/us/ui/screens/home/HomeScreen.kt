@@ -26,6 +26,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,9 +46,14 @@ import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.Pink
 import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.PinkTint
+import com.pingucodu.us.ui.theme.SkeletonActivityCard
+import com.pingucodu.us.ui.theme.SkeletonFeatureTeaserRow
+import com.pingucodu.us.ui.theme.SkeletonRecurringCard
+import com.pingucodu.us.ui.theme.SkeletonScoreCard
 import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.YellowSoft
 import com.pingucodu.us.ui.theme.hardShadow
+import com.pingucodu.us.ui.util.LocalNameMask
 
 private val CardShape = RoundedCornerShape(18.dp)
 private val TileShape = RoundedCornerShape(16.dp)
@@ -63,88 +69,107 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) {
-        viewModel.refresh()
+        viewModel.refreshOnEntry()
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(PinkTint)
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+    val showSkeleton = uiState.isLoading && !uiState.hasLoadedOnce
+
+    PullToRefreshBox(
+        isRefreshing = uiState.isLoading && uiState.hasLoadedOnce,
+        onRefresh = { viewModel.refresh() },
+        modifier = modifier.fillMaxSize().background(PinkTint),
     ) {
-        ScoreCard(
-            net = uiState.net,
-            currentUsername = uiState.username,
-            openCount = uiState.openExpenseCount,
-            onSeeAll = onNavigateToMoney,
-            onSettleUp = onNavigateToMoney,
-        )
-        Spacer(Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier.height(IntrinsicSize.Max),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
         ) {
-            FeatureTeaserCard(
-                label = "CYCLE",
-                title = uiState.cycleStatus?.currentDay?.let { "day $it" } ?: "not tracked yet",
-                subtitle = uiState.cycleStatus?.takeIf { it.currentDay != null }?.statusLabel,
-                color = Teal,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                onClick = onNavigateToCycle,
-            )
-            FeatureTeaserCard(
-                label = "STASH",
-                title = "${uiState.stashSavedCount} saved",
-                subtitle = if (uiState.stashTodoCount > 0) "${uiState.stashTodoCount} to-dos pending" else null,
-                color = YellowSoft,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                onClick = onNavigateToStash,
-            )
-        }
-
-        if (uiState.activityFeed.isNotEmpty()) {
-            Spacer(Modifier.height(20.dp))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .hardShadow(CardShape)
-                    .border(BorderWidth, Ink, CardShape)
-                    .background(MaterialTheme.colorScheme.surface, CardShape)
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
-            ) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("LATEST", style = MaterialTheme.typography.labelMedium)
-                    Text("this week", style = MaterialTheme.typography.labelMedium, color = Ink.copy(alpha = 0.55f))
-                }
-                uiState.activityFeed.forEachIndexed { index, item ->
-                    ActivityRow(item)
-                    if (index != uiState.activityFeed.lastIndex) DashedDivider()
-                }
+            if (showSkeleton) {
+                SkeletonScoreCard()
+                Spacer(Modifier.height(16.dp))
+                SkeletonFeatureTeaserRow()
+                Spacer(Modifier.height(20.dp))
+                SkeletonActivityCard(rows = 3)
+                Spacer(Modifier.height(20.dp))
+                SkeletonRecurringCard(rows = 2)
+                Spacer(Modifier.height(110.dp))
+                return@Column
             }
-        }
 
-        if (uiState.recurringExpenses.isNotEmpty()) {
-            Spacer(Modifier.height(20.dp))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .hardShadow(CardShape)
-                    .border(BorderWidth, Ink, CardShape)
-                    .background(MaterialTheme.colorScheme.surface, CardShape)
-                    .padding(14.dp),
+            ScoreCard(
+                net = uiState.net,
+                currentUsername = uiState.username,
+                openCount = uiState.openExpenseCount,
+                onSeeAll = onNavigateToMoney,
+                onSettleUp = onNavigateToMoney,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.height(IntrinsicSize.Max),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("ON REPEAT", style = MaterialTheme.typography.labelMedium)
-                Spacer(Modifier.height(10.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    uiState.recurringExpenses.forEach { expense ->
-                        RecurringExpenseRow(expense, onClick = onNavigateToMoney)
+                FeatureTeaserCard(
+                    label = "CYCLE",
+                    title = uiState.cycleStatus?.currentDay?.let { "day $it" } ?: "not tracked yet",
+                    subtitle = uiState.cycleStatus?.takeIf { it.currentDay != null }?.statusLabel,
+                    color = Teal,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    onClick = onNavigateToCycle,
+                )
+                FeatureTeaserCard(
+                    label = "STASH",
+                    title = "${uiState.stashSavedCount} saved",
+                    subtitle = if (uiState.stashTodoCount > 0) "${uiState.stashTodoCount} to-dos pending" else null,
+                    color = YellowSoft,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    onClick = onNavigateToStash,
+                )
+            }
+
+            if (uiState.activityFeed.isNotEmpty()) {
+                Spacer(Modifier.height(20.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .hardShadow(CardShape)
+                        .border(BorderWidth, Ink, CardShape)
+                        .background(MaterialTheme.colorScheme.surface, CardShape)
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("LATEST", style = MaterialTheme.typography.labelMedium)
+                        Text("this week", style = MaterialTheme.typography.labelMedium, color = Ink.copy(alpha = 0.55f))
+                    }
+                    uiState.activityFeed.forEachIndexed { index, item ->
+                        ActivityRow(item)
+                        if (index != uiState.activityFeed.lastIndex) DashedDivider()
                     }
                 }
             }
+
+            if (uiState.recurringExpenses.isNotEmpty()) {
+                Spacer(Modifier.height(20.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .hardShadow(CardShape)
+                        .border(BorderWidth, Ink, CardShape)
+                        .background(MaterialTheme.colorScheme.surface, CardShape)
+                        .padding(14.dp),
+                ) {
+                    Text("ON REPEAT", style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.height(10.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        uiState.recurringExpenses.forEach { expense ->
+                            RecurringExpenseRow(expense, onClick = onNavigateToMoney)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(110.dp))
         }
-        Spacer(Modifier.height(110.dp))
     }
 }
 
@@ -182,6 +207,11 @@ private fun ActivityRow(item: ActivityFeedItem) {
         ActivitySource.CYCLE -> Teal to "cy"
         ActivitySource.STASH -> if (item.badgeCode == "td") Color.White to "td" else YellowSoft to item.badgeCode
     }
+    val displayText = if (item.author != null) {
+        "${LocalNameMask.current.resolve(item.author)} shared \"${item.text}\""
+    } else {
+        item.text
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -199,7 +229,7 @@ private fun ActivityRow(item: ActivityFeedItem) {
         }
         Spacer(Modifier.width(10.dp))
         Text(
-            item.text,
+            displayText,
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
             modifier = Modifier.weight(1f),
         )
@@ -218,11 +248,12 @@ private fun ScoreCard(
 ) {
     val myNet = currentUsername?.let { net[it] } ?: 0
     val other = net.keys.firstOrNull { it != currentUsername }
+    val otherLabel = LocalNameMask.current.resolve(other)
 
     val headline = when {
         myNet == 0L || other == null -> "all settled up"
-        myNet > 0 -> "$other owes you"
-        else -> "you owe $other"
+        myNet > 0 -> "$otherLabel owes you"
+        else -> "you owe $otherLabel"
     }
     val amount = if (myNet == 0L || other == null) null else formatCents(kotlin.math.abs(myNet))
 

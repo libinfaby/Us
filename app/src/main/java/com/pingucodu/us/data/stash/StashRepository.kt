@@ -3,6 +3,7 @@ package com.pingucodu.us.data.stash
 import com.pingucodu.us.data.local.TokenStore
 import com.pingucodu.us.data.network.ApiService
 import com.pingucodu.us.data.network.ErrorResponse
+import com.pingucodu.us.data.network.toUserMessage
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import kotlinx.coroutines.flow.first
@@ -58,7 +59,7 @@ class StashRepository @Inject constructor(
         val response = try {
             api.getStash(token, status, type)
         } catch (e: IOException) {
-            return StashItemsResult.NetworkError(e.message ?: "couldn't reach the server")
+            return StashItemsResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return if (response.isSuccessful && body != null) {
@@ -73,7 +74,7 @@ class StashRepository @Inject constructor(
         val response = try {
             api.createStashItem(token, request)
         } catch (e: IOException) {
-            return AddStashItemResult.NetworkError(e.message ?: "couldn't reach the server")
+            return AddStashItemResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -88,7 +89,7 @@ class StashRepository @Inject constructor(
         val response = try {
             api.updateStashItem(token, id, request)
         } catch (e: IOException) {
-            return UpdateStashItemResult.NetworkError(e.message ?: "couldn't reach the server")
+            return UpdateStashItemResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -103,7 +104,7 @@ class StashRepository @Inject constructor(
         val response = try {
             api.toggleStashItem(token, id)
         } catch (e: IOException) {
-            return ToggleStashItemResult.NetworkError(e.message ?: "couldn't reach the server")
+            return ToggleStashItemResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return if (response.isSuccessful && body != null) {
@@ -118,7 +119,7 @@ class StashRepository @Inject constructor(
         val response = try {
             api.deleteStashItem(token, id)
         } catch (e: IOException) {
-            return DeleteStashItemResult.NetworkError(e.message ?: "couldn't reach the server")
+            return DeleteStashItemResult.NetworkError(e.toUserMessage())
         }
         return if (response.isSuccessful) {
             DeleteStashItemResult.Success

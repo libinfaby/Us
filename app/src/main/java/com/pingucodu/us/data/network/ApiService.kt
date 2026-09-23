@@ -169,4 +169,10 @@ interface ApiService {
         @Header("Authorization") bearerToken: String,
         @Path("id") id: String,
     ): Response<Unit>
+
+    @POST("devices")
+    suspend fun registerDeviceToken(
+        @Header("Authorization") bearerToken: String,
+        @Body request: RegisterDeviceTokenRequest,
+    ): Response<Unit>
 }

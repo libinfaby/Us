@@ -11,6 +11,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.ui.settings.SettingsViewModel
+import com.pingucodu.us.ui.util.LocalNameMask
+import com.pingucodu.us.ui.util.NameMask
 
 // This is a deliberately branded, flat-color design (not Material You) - no dynamic color,
 // no dark theme for v1. The prototype only designs a single light look.
@@ -36,10 +38,14 @@ private val PinguCoduColorScheme = lightColorScheme(
 fun UsTheme(content: @Composable () -> Unit) {
     val settingsViewModel: SettingsViewModel = hiltViewModel()
     val fontScaleLevel by settingsViewModel.fontScaleLevel.collectAsState()
+    val maskNamesEnabled by settingsViewModel.maskNamesEnabled.collectAsState()
+    val maskLabelPingu by settingsViewModel.maskLabelPingu.collectAsState()
+    val maskLabelCodu by settingsViewModel.maskLabelCodu.collectAsState()
     val baseDensity = LocalDensity.current
 
     CompositionLocalProvider(
         LocalDensity provides Density(density = baseDensity.density, fontScale = fontScaleLevel.scale),
+        LocalNameMask provides NameMask(enabled = maskNamesEnabled, pinguLabel = maskLabelPingu, coduLabel = maskLabelCodu),
     ) {
         MaterialTheme(
             colorScheme = PinguCoduColorScheme,

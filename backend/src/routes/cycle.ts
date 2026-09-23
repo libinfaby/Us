@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
 import { requireAuth, type AuthVariables } from '../middleware/auth';
+import { notifyPartner } from '../lib/notify';
 
 type CycleContext = Context<{ Bindings: Env; Variables: AuthVariables }>;
 
@@ -130,10 +131,10 @@ function computeIrregularity(
   const lastPeriodLength = periodLengthDays(periods[periods.length - 1]);
 
   if (lastCycleLength !== undefined && Math.abs(lastCycleLength - avgCycleLength) > IRREGULAR_CYCLE_LENGTH_DELTA) {
-    return { message: `last cycle was ${lastCycleLength} days, vs your usual ${avgCycleLength} — worth keeping an eye on` };
+    return { message: `last cycle was ${lastCycleLength} days, vs your usual ${avgCycleLength}, worth keeping an eye on` };
   }
   if (Math.abs(lastPeriodLength - avgPeriodLength) > IRREGULAR_PERIOD_LENGTH_DELTA) {
-    return { message: `last period lasted ${lastPeriodLength} days, vs your usual ${avgPeriodLength} — worth keeping an eye on` };
+    return { message: `last period lasted ${lastPeriodLength} days, vs your usual ${avgPeriodLength}, worth keeping an eye on` };
   }
   return null;
 }
@@ -286,6 +287,16 @@ cycleRoutes.post('/logs', async (c) => {
     .run();
 
   const row = await c.env.DB.prepare('SELECT * FROM cycle_logs WHERE id = ?').bind(id).first<CycleLogRow>();
+
+  if (!existing) {
+    // No symptom/flow/note content in the push - it can render on a lock screen.
+    c.executionCtx.waitUntil(
+      notifyPartner(c.env, c.var.username, 'Cycle update', `${c.var.username} logged today's cycle entry`, {
+        route: 'cycle',
+      }),
+    );
+  }
+
   return c.json(toLogJson(row!), existing ? 200 : 201);
 });
 
@@ -319,7 +330,11 @@ cycleRoutes.post('/observations', async (c) => {
   }
   const obsDate = typeof date === 'string' && date.trim().length > 0 ? date : new Date().toISOString().slice(0, 10);
 
-  const id = crypto.randomUUID();
+  const existing = await c.env.DB.prepare('SELECT id FROM partner_observations WHERE obs_date = ?')
+    .bind(obsDate)
+    .first<{ id: string }>();
+
+  const id = existing?.id ?? crypto.randomUUID();
   await c.env.DB.prepare(
     `INSERT INTO partner_observations (id, obs_date, tags_json, note) VALUES (?, ?, ?, ?)
      ON CONFLICT(obs_date) DO UPDATE SET tags_json = excluded.tags_json, note = excluded.note`,
@@ -330,6 +345,16 @@ cycleRoutes.post('/observations', async (c) => {
   const row = await c.env.DB.prepare('SELECT obs_date, tags_json, note FROM partner_observations WHERE obs_date = ?')
     .bind(obsDate)
     .first<ObservationRow>();
+
+  if (!existing) {
+    // No tags/note content in the push - it can render on a lock screen.
+    c.executionCtx.waitUntil(
+      notifyPartner(c.env, c.var.username, 'A note about your day', `${c.var.username} left you a note today`, {
+        route: 'cycle',
+      }),
+    );
+  }
+
   return c.json(toObservationJson(row!));
 });
 

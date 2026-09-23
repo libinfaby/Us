@@ -38,9 +38,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -92,10 +92,13 @@ import com.pingucodu.us.ui.theme.Pink
 import com.pingucodu.us.ui.theme.PinkTint
 import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.PlaceholderGrey
+import com.pingucodu.us.ui.theme.SkeletonHangoutCard
+import com.pingucodu.us.ui.theme.SkeletonStashItemCard
 import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.YellowSoft
 import com.pingucodu.us.ui.theme.dashedBorder
 import com.pingucodu.us.ui.theme.hardShadow
+import com.pingucodu.us.ui.util.LocalNameMask
 import java.net.URLEncoder
 import java.time.Duration
 import java.time.Instant
@@ -118,6 +121,15 @@ fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltV
     var memoryToDelete by remember { mutableStateOf<Pair<HangoutDto, HangoutMemoryDto>?>(null) }
 
     Box(modifier = modifier.fillMaxSize()) {
+        PullToRefreshBox(
+            isRefreshing = if (uiState.isHangoutCategory) {
+                uiState.hangoutsLoading && uiState.hangoutsLoaded
+            } else {
+                uiState.isLoading && uiState.items.isNotEmpty()
+            },
+            onRefresh = { if (uiState.isHangoutCategory) viewModel.refreshHangouts() else viewModel.refresh() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Spacer(Modifier.height(4.dp))
             CategoryRow(selected = uiState.category, onSelect = viewModel::setCategory)
@@ -154,6 +166,7 @@ fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltV
                 )
             }
         }
+        }
 
         if (!uiState.isHangoutCategory) {
             Box(
@@ -180,7 +193,7 @@ fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltV
         StashItemFormDialog(
             item = uiState.editingItem,
             defaultType = uiState.typeFilter,
-            suggestedTags = uiState.allTags,
+            tagsByType = uiState.tagsByType,
             dialogError = uiState.dialogError,
             isSubmitting = uiState.isSubmitting,
             onDismiss = viewModel::dismissDialog,
@@ -396,8 +409,11 @@ private fun StashItemsSection(
 ) {
     when {
         isLoading && items.isEmpty() -> {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Ink)
+            Column(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                repeat(3) { SkeletonStashItemCard() }
             }
         }
         items.isEmpty() -> {
@@ -451,7 +467,7 @@ private fun StashItemCard(
             ) {
                 Text(typeLabel(item.type), style = PinguCoduType.monoLabel)
             }
-            Text("${item.author} · ${relativeTime(item.createdAt)}", style = MaterialTheme.typography.labelSmall)
+            Text("${LocalNameMask.current.resolve(item.author)} · ${relativeTime(item.createdAt)}", style = MaterialTheme.typography.labelSmall)
         }
         Spacer(Modifier.height(8.dp))
         Text(item.title, style = MaterialTheme.typography.titleMedium)
@@ -548,8 +564,13 @@ private fun HangoutsSection(
     onLongPressHangout: (HangoutDto) -> Unit,
 ) {
     if (isLoading) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Ink)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 20.dp, top = 4.dp, end = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            repeat(3) { SkeletonHangoutCard() }
         }
         return
     }
@@ -693,7 +714,7 @@ private fun MemoryRow(memory: HangoutMemoryDto, isPartnerMemory: Boolean, onEdit
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "- ${memory.author} · ${relativeTime(memory.createdAt)}",
+                "- ${LocalNameMask.current.resolve(memory.author)} · ${relativeTime(memory.createdAt)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = DescriptionGrey,
                 modifier = Modifier.weight(1f),
@@ -925,7 +946,7 @@ private fun StashBottomSheet(title: String, onDismiss: () -> Unit, content: @Com
 private fun StashItemFormDialog(
     item: StashItemDto?,
     defaultType: String?,
-    suggestedTags: List<String>,
+    tagsByType: Map<String, List<String>>,
     dialogError: String?,
     isSubmitting: Boolean,
     onDismiss: () -> Unit,
@@ -950,6 +971,7 @@ private fun StashItemFormDialog(
         return (if (typed.isNotEmpty()) tags + typed else tags).toList()
     }
 
+    val suggestedTags = tagsByType[type].orEmpty()
     val visibleTags = (suggestedTags + tags).distinct()
     val uriHandler = LocalUriHandler.current
 

@@ -3,6 +3,7 @@ import type { Env } from '../types';
 import { requireAuth, type AuthVariables } from '../middleware/auth';
 import { isUsername, type Username } from '../lib/users';
 import { equalSplit, validateCustomSplit } from '../lib/split';
+import { notifyPartner } from '../lib/notify';
 
 export const expensesRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -173,6 +174,17 @@ expensesRoutes.post('/', async (c) => {
     .run();
 
   const row = await c.env.DB.prepare('SELECT * FROM expenses WHERE id = ?').bind(id).first<ExpenseRow>();
+
+  c.executionCtx.waitUntil(
+    notifyPartner(
+      c.env,
+      c.var.username,
+      'New expense',
+      `${c.var.username} added '${title.trim()}' - ₹${(amountCents / 100).toFixed(2)}`,
+      { route: 'money' },
+    ),
+  );
+
   return c.json(toExpenseJson(row!), 201);
 });
 

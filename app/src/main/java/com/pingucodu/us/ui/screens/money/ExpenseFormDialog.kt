@@ -83,6 +83,7 @@ import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.FontScaleLevel
 import com.pingucodu.us.ui.theme.dashedBorder
 import com.pingucodu.us.ui.theme.hardShadow
+import com.pingucodu.us.ui.util.LocalNameMask
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
@@ -133,6 +134,7 @@ fun ExpenseFormDialog(
     onSubmit: (ExpenseRequest) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val nameMask = LocalNameMask.current
 
     var title by remember { mutableStateOf(expense?.title ?: "") }
     var amountText by remember { mutableStateOf(expense?.let { (it.amountCents / 100.0).toString() } ?: "") }
@@ -365,13 +367,13 @@ fun ExpenseFormDialog(
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         NeoPickButton(
-                            label = if (currentUsername == "pingu") "pingu (you)" else "pingu",
+                            label = if (currentUsername == "pingu") "${nameMask.resolve("pingu")} (you)" else nameMask.resolve("pingu")!!,
                             selected = paidBy == "pingu",
                             modifier = Modifier.weight(1f),
                             onClick = { paidBy = "pingu" },
                         )
                         NeoPickButton(
-                            label = if (currentUsername == "codu") "codu (you)" else "codu",
+                            label = if (currentUsername == "codu") "${nameMask.resolve("codu")} (you)" else nameMask.resolve("codu")!!,
                             selected = paidBy == "codu",
                             modifier = Modifier.weight(1f),
                             onClick = { paidBy = "codu" },
@@ -411,7 +413,7 @@ fun ExpenseFormDialog(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text(
-                                    "$currentUsername pays",
+                                    "${nameMask.resolve(currentUsername)} pays",
                                     style = MaterialTheme.typography.titleMedium,
                                     modifier = Modifier.weight(1f),
                                 )
@@ -431,7 +433,7 @@ fun ExpenseFormDialog(
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text(
-                                    "$otherUsername pays",
+                                    "${nameMask.resolve(otherUsername)} pays",
                                     style = MaterialTheme.typography.titleMedium,
                                     modifier = Modifier.weight(1f),
                                 )

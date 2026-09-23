@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { requireAuth, type AuthVariables } from '../middleware/auth';
+import { notifyPartner } from '../lib/notify';
 
 export const stashRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -99,6 +100,13 @@ stashRoutes.post('/', async (c) => {
     .run();
 
   const row = await c.env.DB.prepare('SELECT * FROM stash_items WHERE id = ?').bind(id).first<StashRow>();
+
+  c.executionCtx.waitUntil(
+    notifyPartner(c.env, c.var.username, 'New in Stash', `${c.var.username} added '${title.trim()}' to Stash`, {
+      route: 'stash',
+    }),
+  );
+
   return c.json(toItemJson(row!), 201);
 });
 

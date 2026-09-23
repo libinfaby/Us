@@ -30,16 +30,22 @@ import javax.inject.Inject
 
 enum class ActivitySource { MONEY, CYCLE, STASH }
 
-/** [badgeCode] is the 2-letter (or "₹") tag shown in the row's source badge; only meaningful for STASH. */
+/**
+ * [badgeCode] is the 2-letter (or "₹") tag shown in the row's source badge; only meaningful for STASH.
+ * [author] is kept separate from [text] (rather than baked in) so the composable that renders it can
+ * apply the name-masking setting, which a ViewModel has no access to.
+ */
 data class ActivityFeedItem(
     val source: ActivitySource,
     val text: String,
     val timeLabel: String,
     val badgeCode: String = "",
+    val author: String? = null,
 )
 
 data class HomeUiState(
     val isLoading: Boolean = true,
+    val hasLoadedOnce: Boolean = false,
     val username: String? = null,
     val net: Map<String, Long> = emptyMap(),
     val openExpenseCount: Int = 0,
@@ -72,6 +78,14 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** Called when the Home tab (re)enters composition - resets [HomeUiState.hasLoadedOnce] so
+     * the dashboard shows skeleton cards instead of the pull-to-refresh spinner, which should
+     * only appear when the user actually pulls down to refresh. */
+    fun refreshOnEntry() {
+        _uiState.update { it.copy(hasLoadedOnce = false) }
+        refresh()
+    }
+
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
@@ -93,6 +107,7 @@ class HomeViewModel @Inject constructor(
                 val stashItems = (stashResult as? StashItemsResult.Success)?.items
                 state.copy(
                     isLoading = false,
+                    hasLoadedOnce = true,
                     openExpenseCount = openExpenseCount,
                     recurringExpenses = openExpenses?.filter { it.isRecurring } ?: state.recurringExpenses,
                     net = (balanceResult as? BalanceResult.Success)?.net ?: state.net,
@@ -121,7 +136,7 @@ class HomeViewModel @Inject constructor(
             add(ActivityFeedItem(ActivitySource.CYCLE, "cycle day ${cycleStatus.currentDay} · $phaseLabel", "today"))
         }
         stashItems?.sortedByDescending { it.createdAt }?.take(4)?.forEach { item ->
-            val text = if (item.type == "todo") item.title else "${item.author} shared \"${item.title}\""
+            val author = if (item.type == "todo") null else item.author
             val code = when (item.type) {
                 "movie" -> "mv"
                 "link" -> "ln"
@@ -129,7 +144,7 @@ class HomeViewModel @Inject constructor(
                 "note" -> "nt"
                 else -> "td"
             }
-            add(ActivityFeedItem(ActivitySource.STASH, text, relativeTime(item.createdAt), badgeCode = code))
+            add(ActivityFeedItem(ActivitySource.STASH, item.title, relativeTime(item.createdAt), badgeCode = code, author = author))
         }
     }.take(6)
 

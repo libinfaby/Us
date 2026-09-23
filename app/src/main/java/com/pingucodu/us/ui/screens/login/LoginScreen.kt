@@ -55,6 +55,7 @@ import com.pingucodu.us.ui.theme.PlaceholderGrey
 import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.YellowSoft
 import com.pingucodu.us.ui.theme.hardShadow
+import com.pingucodu.us.ui.util.LocalNameMask
 import androidx.compose.ui.draw.rotate
 
 private val FieldShape = RoundedCornerShape(18.dp)
@@ -67,6 +68,9 @@ fun LoginScreen(modifier: Modifier = Modifier, viewModel: AuthViewModel = hiltVi
     var validationError by remember { mutableStateOf<String?>(null) }
     val uiState by viewModel.loginUiState.collectAsState()
     val errorMessage = validationError ?: uiState.errorMessage
+    val nameMask = LocalNameMask.current
+    val pinguLabel = nameMask.resolve("pingu")!!
+    val coduLabel = nameMask.resolve("codu")!!
 
     Column(
         modifier = modifier
@@ -83,7 +87,7 @@ fun LoginScreen(modifier: Modifier = Modifier, viewModel: AuthViewModel = hiltVi
             LogoSwatch(YellowSoft, RoundedCornerShape(4.dp), rotationDegrees = 45f)
         }
         Spacer(Modifier.height(16.dp))
-        Text("an app for\npingu\n& codu", style = MaterialTheme.typography.displayLarge)
+        Text("an app for\n$pinguLabel\n& $coduLabel", style = MaterialTheme.typography.displayLarge)
         Spacer(Modifier.height(12.dp))
         Text(
             "a little app for the two of us, and everything that comes with it.",
@@ -97,7 +101,7 @@ fun LoginScreen(modifier: Modifier = Modifier, viewModel: AuthViewModel = hiltVi
         OutlinedTextField(
             value = username,
             onValueChange = { username = it; validationError = null },
-            placeholder = { Text("pingu or codu", color = PlaceholderGrey) },
+            placeholder = { Text("$pinguLabel or $coduLabel", color = PlaceholderGrey) },
             textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = MaterialTheme.typography.titleMedium.fontWeight),
             modifier = Modifier
                 .fillMaxWidth()
@@ -113,12 +117,12 @@ fun LoginScreen(modifier: Modifier = Modifier, viewModel: AuthViewModel = hiltVi
         )
         Spacer(Modifier.height(14.dp))
 
-        Text("PIN", style = PinguCoduType.monoLabel)
+        Text("PASSWORD", style = PinguCoduType.monoLabel)
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = pin,
             onValueChange = { pin = it; validationError = null },
-            placeholder = { Text("••••••", color = PlaceholderGrey) },
+            placeholder = { Text("••••", color = PlaceholderGrey) },
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = MaterialTheme.typography.titleMedium.fontWeight),
@@ -158,7 +162,7 @@ fun LoginScreen(modifier: Modifier = Modifier, viewModel: AuthViewModel = hiltVi
                     pin.isBlank() -> "enter a pin"
                     else -> null
                 }
-                if (validationError == null) viewModel.login(username, pin)
+                if (validationError == null) viewModel.login(nameMask.unresolve(username), pin)
             },
             enabled = !uiState.isLoading,
             modifier = Modifier
@@ -184,8 +188,8 @@ fun LoginScreen(modifier: Modifier = Modifier, viewModel: AuthViewModel = hiltVi
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("quick:", style = PinguCoduType.mono)
-            QuickChip("pingu") { username = "pingu" }
-            QuickChip("codu") { username = "codu" }
+            QuickChip(pinguLabel) { username = pinguLabel }
+            QuickChip(coduLabel) { username = coduLabel }
         }
     }
 }

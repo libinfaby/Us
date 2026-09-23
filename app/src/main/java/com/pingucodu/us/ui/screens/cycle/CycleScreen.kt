@@ -33,9 +33,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -71,10 +71,12 @@ import com.pingucodu.us.ui.theme.PinkTint
 import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.PlaceholderGrey
 import com.pingucodu.us.ui.theme.Purple
+import com.pingucodu.us.ui.theme.SkeletonCycleHeaderCard
 import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.YellowSoft
 import com.pingucodu.us.ui.theme.dashedBorder
 import com.pingucodu.us.ui.theme.hardShadow
+import com.pingucodu.us.ui.util.LocalNameMask
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -99,9 +101,14 @@ fun CycleScreen(modifier: Modifier = Modifier, viewModel: CycleViewModel = hiltV
     var editingObsDate by remember { mutableStateOf(today.toString()) }
     var observationToDelete by remember { mutableStateOf<CycleObservationDto?>(null) }
 
-    val trackedUser = uiState.status?.trackedUser
+    val trackedUser = LocalNameMask.current.resolve(uiState.status?.trackedUser)
 
     Box(modifier = modifier.fillMaxSize()) {
+        PullToRefreshBox(
+            isRefreshing = uiState.isLoading && uiState.status != null,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -109,9 +116,7 @@ fun CycleScreen(modifier: Modifier = Modifier, viewModel: CycleViewModel = hiltV
                 .padding(20.dp),
         ) {
             if (uiState.isLoading && uiState.status == null) {
-                Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Ink)
-                }
+                SkeletonCycleHeaderCard()
                 return@Column
             }
 
@@ -190,6 +195,7 @@ fun CycleScreen(modifier: Modifier = Modifier, viewModel: CycleViewModel = hiltV
             }
             Spacer(Modifier.height(210.dp))
         }
+        }
 
         if (uiState.canLog) {
             Box(
@@ -259,7 +265,7 @@ fun CycleScreen(modifier: Modifier = Modifier, viewModel: CycleViewModel = hiltV
 
 @Composable
 private fun CycleHeaderCard(status: CycleStatusDto?, canLog: Boolean, avgCycleLength: Int?) {
-    val label = if (canLog) "YOUR CYCLE" else "${(status?.trackedUser ?: "").uppercase()} · CYCLE"
+    val label = if (canLog) "YOUR CYCLE" else "${(LocalNameMask.current.resolve(status?.trackedUser) ?: "").uppercase()} · CYCLE"
     val headline = if (status?.currentDay != null) {
         "day ${status.currentDay} · ${status.phase ?: status.statusLabel}"
     } else {
@@ -1029,12 +1035,12 @@ private fun AddLogDialog(
                     )
                     Spacer(Modifier.height(20.dp))
 
-                    SectionLabel("note to partner - optional, codu will see this")
+                    SectionLabel("note to partner - optional, ${LocalNameMask.current.resolve("codu")} will see this")
                     Spacer(Modifier.height(8.dp))
                     NeoField(
                         value = partnerNote,
                         onValueChange = { partnerNote = it },
-                        placeholder = "leave something for codu",
+                        placeholder = "leave something for ${LocalNameMask.current.resolve("codu")}",
                         backgroundColor = PartnerNoteFieldColor,
                         minLines = 2,
                         modifier = Modifier.fillMaxWidth(),

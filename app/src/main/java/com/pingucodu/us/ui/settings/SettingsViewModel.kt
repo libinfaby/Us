@@ -24,4 +24,34 @@ class SettingsViewModel @Inject constructor(
     fun setFontScaleLevel(level: FontScaleLevel) {
         viewModelScope.launch { repository.setFontScaleLevel(level) }
     }
+
+    val maskNamesEnabled: StateFlow<Boolean> = repository.maskNamesEnabled.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        false,
+    )
+
+    fun setMaskNamesEnabled(enabled: Boolean) {
+        viewModelScope.launch { repository.setMaskNamesEnabled(enabled) }
+    }
+
+    val maskLabelPingu: StateFlow<String> = repository.maskLabelPingu.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        "A",
+    )
+
+    fun setMaskLabelPingu(label: String) {
+        viewModelScope.launch { repository.setMaskLabelPingu(label) }
+    }
+
+    val maskLabelCodu: StateFlow<String> = repository.maskLabelCodu.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        "B",
+    )
+
+    fun setMaskLabelCodu(label: String) {
+        viewModelScope.launch { repository.setMaskLabelCodu(label) }
+    }
 }

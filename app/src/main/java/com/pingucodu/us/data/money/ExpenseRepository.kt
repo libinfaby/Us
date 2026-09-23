@@ -11,6 +11,7 @@ import com.pingucodu.us.data.network.HangoutMemoryDto
 import com.pingucodu.us.data.network.HangoutMemoryRequest
 import com.pingucodu.us.data.network.SettleAllRequest
 import com.pingucodu.us.data.network.UpdateHangoutRequest
+import com.pingucodu.us.data.network.toUserMessage
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import retrofit2.Response
@@ -113,7 +114,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.getExpenses(token, status, hangoutId)
         } catch (e: IOException) {
-            return ExpensesResult.NetworkError(e.message ?: "couldn't reach the server")
+            return ExpensesResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return if (response.isSuccessful && body != null) {
@@ -128,7 +129,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.createExpense(token, request)
         } catch (e: IOException) {
-            return AddExpenseResult.NetworkError(e.message ?: "couldn't reach the server")
+            return AddExpenseResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -143,7 +144,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.updateExpense(token, id, request)
         } catch (e: IOException) {
-            return UpdateExpenseResult.NetworkError(e.message ?: "couldn't reach the server")
+            return UpdateExpenseResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -158,7 +159,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.deleteExpense(token, id)
         } catch (e: IOException) {
-            return DeleteExpenseResult.NetworkError(e.message ?: "couldn't reach the server")
+            return DeleteExpenseResult.NetworkError(e.toUserMessage())
         }
         return if (response.isSuccessful) DeleteExpenseResult.Success else DeleteExpenseResult.NetworkError(errorMessage(response))
     }
@@ -168,7 +169,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.settleExpense(token, id)
         } catch (e: IOException) {
-            return SettleExpenseResult.NetworkError(e.message ?: "couldn't reach the server")
+            return SettleExpenseResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return if (response.isSuccessful && body != null) {
@@ -183,7 +184,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.settleAll(token, SettleAllRequest(hangoutId))
         } catch (e: IOException) {
-            return SettleAllResult.NetworkError(e.message ?: "couldn't reach the server")
+            return SettleAllResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return if (response.isSuccessful && body != null) {
@@ -198,7 +199,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.getBalance(token)
         } catch (e: IOException) {
-            return BalanceResult.NetworkError(e.message ?: "couldn't reach the server")
+            return BalanceResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return if (response.isSuccessful && body != null) {
@@ -213,7 +214,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.getHangouts(token)
         } catch (e: IOException) {
-            return HangoutsResult.NetworkError(e.message ?: "couldn't reach the server")
+            return HangoutsResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return if (response.isSuccessful && body != null) {
@@ -228,7 +229,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.createHangout(token, CreateHangoutRequest(name, startDate, endDate))
         } catch (e: IOException) {
-            return CreateHangoutResult.NetworkError(e.message ?: "couldn't reach the server")
+            return CreateHangoutResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return if (response.isSuccessful && body != null) {
@@ -243,7 +244,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.updateHangout(token, id, UpdateHangoutRequest(name, startDate, endDate))
         } catch (e: IOException) {
-            return UpdateHangoutResult.NetworkError(e.message ?: "couldn't reach the server")
+            return UpdateHangoutResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -258,7 +259,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.deleteHangout(token, id)
         } catch (e: IOException) {
-            return DeleteHangoutResult.NetworkError(e.message ?: "couldn't reach the server")
+            return DeleteHangoutResult.NetworkError(e.toUserMessage())
         }
         return if (response.isSuccessful) DeleteHangoutResult.Success else DeleteHangoutResult.NetworkError(errorMessage(response))
     }
@@ -268,7 +269,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.addHangoutMemory(token, hangoutId, HangoutMemoryRequest(text))
         } catch (e: IOException) {
-            return AddMemoryResult.NetworkError(e.message ?: "couldn't reach the server")
+            return AddMemoryResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -283,7 +284,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.updateHangoutMemory(token, hangoutId, memoryId, HangoutMemoryRequest(text))
         } catch (e: IOException) {
-            return UpdateMemoryResult.NetworkError(e.message ?: "couldn't reach the server")
+            return UpdateMemoryResult.NetworkError(e.toUserMessage())
         }
         val body = response.body()
         return when {
@@ -298,7 +299,7 @@ class ExpenseRepository @Inject constructor(
         val response = try {
             api.deleteHangoutMemory(token, hangoutId, memoryId)
         } catch (e: IOException) {
-            return DeleteMemoryResult.NetworkError(e.message ?: "couldn't reach the server")
+            return DeleteMemoryResult.NetworkError(e.toUserMessage())
         }
         return if (response.isSuccessful) DeleteMemoryResult.Success else DeleteMemoryResult.NetworkError(errorMessage(response))
     }

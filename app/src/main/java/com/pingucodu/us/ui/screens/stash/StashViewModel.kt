@@ -45,7 +45,7 @@ const val ALL_CATEGORY = "all"
 data class StashUiState(
     val isLoading: Boolean = true,
     val items: List<StashItemDto> = emptyList(),
-    val allTags: List<String> = emptyList(),
+    val tagsByType: Map<String, List<String>> = emptyMap(),
     val category: String = ALL_CATEGORY,
     val currentUsername: String? = null,
     val errorMessage: String? = null,
@@ -92,7 +92,10 @@ class StashViewModel @Inject constructor(
     }
 
     fun setCategory(category: String) {
-        _uiState.update { it.copy(category = category) }
+        // Switching type filters is a full data-set swap, not a refresh of what's on screen -
+        // drop the stale items right away so the list falls back to skeleton cards instead of
+        // briefly showing the previous category's items under a spurious pull-to-refresh spinner.
+        _uiState.update { it.copy(category = category, items = emptyList()) }
         if (category == HANGOUTS_CATEGORY) {
             if (!_uiState.value.hangoutsLoaded) refreshHangouts()
         } else {
@@ -112,13 +115,20 @@ class StashViewModel @Inject constructor(
         }
     }
 
-    /** The full set of tags ever used, regardless of the current category filter — powers the
-     * "suggested tags" chips in the add/edit form so previously-used tags are one tap away. */
+    /** Tags ever used, grouped by item type — powers the "suggested tags" chips in the add/edit
+     * form so previously-used tags are one tap away, without leaking tags from other types
+     * (e.g. a "thriller" tag on a movie has no business suggesting itself on a place). */
     fun refreshAllTags() {
         viewModelScope.launch {
             when (val result = stashRepository.getItems(status = "everything", type = null)) {
                 is StashItemsResult.Success ->
-                    _uiState.update { it.copy(allTags = result.items.flatMap { item -> item.tags }.distinct()) }
+                    _uiState.update {
+                        it.copy(
+                            tagsByType = result.items
+                                .groupBy { item -> item.type }
+                                .mapValues { (_, items) -> items.flatMap { item -> item.tags }.distinct() },
+                        )
+                    }
                 is StashItemsResult.NetworkError -> Unit
             }
         }
