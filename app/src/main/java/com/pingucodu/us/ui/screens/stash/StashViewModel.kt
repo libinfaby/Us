@@ -213,6 +213,45 @@ class StashViewModel @Inject constructor(
         }
     }
 
+    /** Tags aren't their own entity - just strings embedded on each item - so renaming one
+     * means walking every [type] item that has it and PATCHing its tag list. */
+    fun renameTag(type: String, oldTag: String, newTag: String) {
+        if (newTag == oldTag) return
+        viewModelScope.launch {
+            when (val result = stashRepository.getItems(status = "everything", type = null)) {
+                is StashItemsResult.Success -> {
+                    result.items
+                        .filter { it.type == type && oldTag in it.tags }
+                        .forEach { item ->
+                            val updatedTags = item.tags.map { t -> if (t == oldTag) newTag else t }.distinct()
+                            stashRepository.updateItem(item.id, StashItemRequest(tags = updatedTags))
+                        }
+                    refresh()
+                    refreshAllTags()
+                }
+                is StashItemsResult.NetworkError -> _uiState.update { it.copy(errorMessage = result.message) }
+            }
+        }
+    }
+
+    /** Deletes a tag from every [type] item that has it - see [renameTag]. */
+    fun deleteTag(type: String, tag: String) {
+        viewModelScope.launch {
+            when (val result = stashRepository.getItems(status = "everything", type = null)) {
+                is StashItemsResult.Success -> {
+                    result.items
+                        .filter { it.type == type && tag in it.tags }
+                        .forEach { item ->
+                            stashRepository.updateItem(item.id, StashItemRequest(tags = item.tags - tag))
+                        }
+                    refresh()
+                    refreshAllTags()
+                }
+                is StashItemsResult.NetworkError -> _uiState.update { it.copy(errorMessage = result.message) }
+            }
+        }
+    }
+
     fun openAddHangoutDialog() {
         _uiState.update { it.copy(showHangoutDialog = true, editingHangout = null, hangoutDialogError = null) }
     }

@@ -198,6 +198,8 @@ fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltV
             isSubmitting = uiState.isSubmitting,
             onDismiss = viewModel::dismissDialog,
             onSubmit = viewModel::submitItem,
+            onRenameTag = viewModel::renameTag,
+            onDeleteTag = viewModel::deleteTag,
         )
     }
 
@@ -811,12 +813,13 @@ private fun FindOnMapsChip(enabled: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SuggestedTagChip(tag: String, selected: Boolean, onClick: () -> Unit) {
+private fun SuggestedTagChip(tag: String, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .border(2.dp, Ink, RoundedCornerShape(50))
             .background(if (selected) Pink else Color.White, RoundedCornerShape(50))
-            .clickableNoRipple(onClick)
+            .combinedClickable(interactionSource = interactionSource, indication = null, onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Text("#$tag", style = PinguCoduType.monoLabel, color = Ink)
@@ -951,12 +954,16 @@ private fun StashItemFormDialog(
     isSubmitting: Boolean,
     onDismiss: () -> Unit,
     onSubmit: (StashItemRequest) -> Unit,
+    onRenameTag: (type: String, oldTag: String, newTag: String) -> Unit,
+    onDeleteTag: (type: String, tag: String) -> Unit,
 ) {
     var type by remember { mutableStateOf(item?.type ?: defaultType ?: STASH_TYPES.first().value) }
     var title by remember { mutableStateOf(item?.title ?: "") }
     var body by remember { mutableStateOf(item?.body ?: "") }
     var tags by remember { mutableStateOf(item?.tags?.toSet() ?: emptySet()) }
     var tagInput by remember { mutableStateOf("") }
+    var tagToManage by remember { mutableStateOf<String?>(null) }
+    var tagToConfirmDelete by remember { mutableStateOf<String?>(null) }
 
     val isValid = title.isNotBlank()
 
@@ -1016,10 +1023,13 @@ private fun StashItemFormDialog(
                         tag = tag,
                         selected = tag in tags,
                         onClick = { tags = if (tag in tags) tags - tag else tags + tag },
+                        onLongClick = { tagToManage = tag },
                     )
                 }
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(4.dp))
+            Text("hold a tag to rename or delete it", style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
+            Spacer(Modifier.height(6.dp))
         }
         NeoField(
             value = tagInput,
@@ -1039,6 +1049,82 @@ private fun StashItemFormDialog(
 
         SubmitButton(label = if (item == null) "drop it in" else "save changes", enabled = isValid && !isSubmitting) {
             onSubmit(StashItemRequest(type = type, title = title.trim(), body = body.ifBlank { null }, tags = finalTags()))
+        }
+    }
+
+    if (tagToManage != null) {
+        val target = tagToManage!!
+        EditTagDialog(
+            tag = target,
+            onRename = { newName ->
+                if (newName.isNotEmpty() && newName != target) {
+                    onRenameTag(type, target, newName)
+                    tags = tags.map { t -> if (t == target) newName else t }.toSet()
+                }
+                tagToManage = null
+            },
+            onDeleteClick = {
+                tagToConfirmDelete = target
+                tagToManage = null
+            },
+            onDismiss = { tagToManage = null },
+        )
+    }
+
+    if (tagToConfirmDelete != null) {
+        val target = tagToConfirmDelete!!
+        NeoConfirmDialog(
+            title = "delete this tag?",
+            message = "\"#$target\" is removed from every item that has it. this can't be undone.",
+            confirmLabel = "delete",
+            onConfirm = {
+                onDeleteTag(type, target)
+                tags = tags - target
+                tagToConfirmDelete = null
+            },
+            onDismiss = { tagToConfirmDelete = null },
+        )
+    }
+}
+
+@Composable
+private fun EditTagDialog(
+    tag: String,
+    onRename: (String) -> Unit,
+    onDeleteClick: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember(tag) { mutableStateOf(tag) }
+
+    fun commitRename() {
+        onRename(name.trim().removePrefix("#"))
+    }
+
+    StashBottomSheet(title = "edit tag", onDismiss = onDismiss) {
+        SectionLabel("rename")
+        Spacer(Modifier.height(8.dp))
+        NeoField(
+            value = name,
+            onValueChange = { name = it },
+            textStyle = PinguCoduType.mono.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { commitRename() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(16.dp))
+        SubmitButton(label = "save changes", enabled = name.trim().removePrefix("#").isNotEmpty()) { commitRename() }
+        Spacer(Modifier.height(10.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .hardShadow(RoundedCornerShape(16.dp), offsetX = 3.dp, offsetY = 3.dp)
+                .border(BorderWidth, Ink, RoundedCornerShape(16.dp))
+                .background(Pink, RoundedCornerShape(16.dp))
+                .clickableNoRipple(onDeleteClick)
+                .padding(vertical = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("delete this tag", style = MaterialTheme.typography.titleMedium, color = Ink)
         }
     }
 }
