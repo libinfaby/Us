@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.pingucodu.us.MainActivity
@@ -48,6 +49,7 @@ class UsMessagingService : FirebaseMessagingService() {
 
         val notification = NotificationCompat.Builder(this, PinguCoduApplication.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(ContextCompat.getColor(this, R.color.pink))
             .setContentTitle(title)
             .setContentText(body)
             .setContentIntent(pendingIntent)

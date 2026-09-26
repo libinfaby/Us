@@ -28,6 +28,20 @@
             </intent-filter>
         </activity>
 
+        <!-- While the app is in the background (e.g. phone locked), FCM draws the notification
+             itself and never calls UsMessagingService - without these it falls back to the
+             full-color launcher icon (which Android masks into a blank circle) and a generic
+             "Miscellaneous" channel. Keep in sync with UsMessagingService's builder. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/pink" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="us_updates" />
+
         <service
             android:name=".notifications.UsMessagingService"
             android:exported="false">
