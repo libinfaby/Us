@@ -128,10 +128,30 @@ async function fetchJson<T>(url: string): Promise<T | null> {
   }
 }
 
+const MAX_SUMMARY_LENGTH = 700;
+
+/** Cuts [text] at the last full sentence that fits in [max], so a long summary doesn't end mid-word. */
+function truncateAtSentence(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const lastStop = cut.lastIndexOf('. ');
+  return lastStop > 0 ? cut.slice(0, lastStop + 1) : truncate(text, max);
+}
+
+/** The opening paragraph of an English Wikipedia article, e.g. the premise and cast of a film. */
+async function wikipediaSummary(articleTitle: string): Promise<string | null> {
+  const summary = await fetchJson<{ extract?: string }>(
+    `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(articleTitle.replace(/ /g, '_'))}`,
+  );
+  const extract = clean(summary?.extract);
+  return extract ? truncateAtSentence(extract, MAX_SUMMARY_LENGTH) : null;
+}
+
 /**
  * IMDb answers every non-browser fetch with a bot challenge (HTTP 202), so its pages can't be
  * read. Wikidata indexes films by IMDb id (property P345) and needs no API key, so look the title
- * up there instead: "Inception" + "2010 film directed by Christopher Nolan".
+ * up there instead: "Inception" + "2010 film directed by Christopher Nolan", then add the opening
+ * paragraph of the film's English Wikipedia article as a short summary.
  */
 async function imdbPreviewFromWikidata(imdbId: string): Promise<{ title: string; description: string | null } | null> {
   const search = await fetchJson<{ query?: { search?: { title: string }[] } }>(
@@ -141,17 +161,30 @@ async function imdbPreviewFromWikidata(imdbId: string): Promise<{ title: string;
   if (!entityId || !/^Q\d+$/.test(entityId)) return null;
 
   const entities = await fetchJson<{
-    entities?: Record<string, { labels?: { en?: { value: string } }; descriptions?: { en?: { value: string } } }>;
-  }>(`${WIKIDATA_API}?action=wbgetentities&ids=${entityId}&props=labels|descriptions&languages=en&format=json`);
+    entities?: Record<
+      string,
+      {
+        labels?: { en?: { value: string } };
+        descriptions?: { en?: { value: string } };
+        sitelinks?: { enwiki?: { title: string } };
+      }
+    >;
+  }>(
+    `${WIKIDATA_API}?action=wbgetentities&ids=${entityId}&props=labels|descriptions|sitelinks&languages=en&sitefilter=enwiki&format=json`,
+  );
   const entity = entities?.entities?.[entityId];
   const label = clean(entity?.labels?.en?.value);
   if (!label) return null;
-  const description = clean(entity?.descriptions?.en?.value);
-  // Match Letterboxd's "Title (year)" style when the description leads with the year.
-  const year = description?.match(/^(\d{4})\b/)?.[1];
+  const tagline = clean(entity?.descriptions?.en?.value);
+  const articleTitle = entity?.sitelinks?.enwiki?.title;
+  const summary = articleTitle ? await wikipediaSummary(articleTitle) : null;
+  // Match Letterboxd's "Title (year)" style when the tagline leads with the year.
+  const year = tagline?.match(/^(\d{4})\b/)?.[1];
+  const capitalizedTagline = tagline ? tagline.charAt(0).toUpperCase() + tagline.slice(1) : null;
+  const description = [capitalizedTagline, summary].filter((part): part is string => part !== null).join('\n\n');
   return {
     title: year ? `${label} (${year})` : label,
-    description: description ? description.charAt(0).toUpperCase() + description.slice(1) : null,
+    description: description.length > 0 ? description : null,
   };
 }
 
