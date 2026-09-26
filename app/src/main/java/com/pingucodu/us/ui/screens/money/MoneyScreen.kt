@@ -35,6 +35,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,8 +67,44 @@ import java.util.Locale
 
 private val BalanceCardShape = RoundedCornerShape(18.dp)
 
+enum class MoneySection(val label: String) { EXPENSES("expenses"), GOALS("goals") }
+
+/**
+ * [initialSection] lets Home's goals teaser and a "goals" push jump straight to the goals section;
+ * it's applied once, then [onInitialSectionConsumed] clears it.
+ */
 @Composable
-fun MoneyScreen(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltViewModel()) {
+fun MoneyScreen(
+    modifier: Modifier = Modifier,
+    initialSection: MoneySection? = null,
+    onInitialSectionConsumed: () -> Unit = {},
+) {
+    var section by rememberSaveable { mutableStateOf(MoneySection.EXPENSES) }
+    LaunchedEffect(initialSection) {
+        if (initialSection != null) {
+            section = initialSection
+            onInitialSectionConsumed()
+        }
+    }
+
+    Column(modifier = modifier.fillMaxSize().background(PinkTint)) {
+        Row(
+            modifier = Modifier.padding(start = 20.dp, top = 4.dp, end = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            MoneySection.entries.forEach { entry ->
+                Pill(label = entry.label, selected = entry == section, modifier = Modifier.weight(1f), onClick = { section = entry })
+            }
+        }
+        when (section) {
+            MoneySection.EXPENSES -> ExpensesContent(modifier = Modifier.weight(1f))
+            MoneySection.GOALS -> GoalsContent(modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun ExpensesContent(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
     var expenseToDelete by remember { mutableStateOf<ExpenseDto?>(null) }
     var expenseToTogglePaid by remember { mutableStateOf<ExpenseDto?>(null) }

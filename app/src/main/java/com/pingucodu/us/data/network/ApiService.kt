@@ -219,4 +219,42 @@ interface ApiService {
         @Path("id") id: String,
     ): Response<Unit>
 
+    @GET("goals")
+    suspend fun getGoals(
+        @Header("Authorization") bearerToken: String,
+        @Query("status") status: String? = null,
+    ): Response<List<SavingsGoalDto>>
+
+    @POST("goals")
+    suspend fun createGoal(
+        @Header("Authorization") bearerToken: String,
+        @Body request: SavingsGoalRequest,
+    ): Response<SavingsGoalDto>
+
+    @PATCH("goals/{id}")
+    suspend fun updateGoal(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+        @Body request: SavingsGoalRequest,
+    ): Response<SavingsGoalDto>
+
+    @DELETE("goals/{id}")
+    suspend fun deleteGoal(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+    ): Response<Unit>
+
+    @POST("goals/{id}/contributions")
+    suspend fun addGoalContribution(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+        @Body request: GoalContributionRequest,
+    ): Response<SavingsGoalDto>
+
+    @DELETE("goals/{id}/contributions/{contributionId}")
+    suspend fun deleteGoalContribution(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+        @Path("contributionId") contributionId: String,
+    ): Response<SavingsGoalDto>
 }

@@ -20,3 +20,6 @@ enum class Tab(val route: String, val label: String, val shape: Shape) {
 /** Routes reachable from within the main screen that aren't bottom-nav tabs. */
 const val SETTINGS_ROUTE = "settings"
 const val DATES_ROUTE = "dates"
+
+/** Push-notification route (see backend `data.route`) that opens Money on its goals section. */
+const val GOALS_PUSH_ROUTE = "goals"

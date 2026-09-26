@@ -8,6 +8,7 @@ import { stashRoutes } from './routes/stash';
 import { devicesRoutes } from './routes/devices';
 import { nudgesRoutes } from './routes/nudges';
 import { datesRoutes } from './routes/dates';
+import { goalsRoutes } from './routes/goals';
 import { runDailyReminders } from './lib/reminders';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -21,6 +22,7 @@ app.route('/stash', stashRoutes);
 app.route('/devices', devicesRoutes);
 app.route('/nudges', nudgesRoutes);
 app.route('/dates', datesRoutes);
+app.route('/goals', goalsRoutes);
 
 export default {
   fetch: app.fetch,

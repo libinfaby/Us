@@ -53,6 +53,7 @@ import com.pingucodu.us.ui.screens.dates.DatesScreen
 import com.pingucodu.us.ui.screens.home.HomeScreen
 import com.pingucodu.us.ui.screens.login.LoginScreen
 import com.pingucodu.us.ui.screens.money.MoneyScreen
+import com.pingucodu.us.ui.screens.money.MoneySection
 import com.pingucodu.us.ui.screens.settings.SettingsScreen
 import com.pingucodu.us.ui.screens.stash.StashScreen
 import com.pingucodu.us.ui.theme.AvatarShape
@@ -104,7 +105,8 @@ private fun MainScreen(
     onPendingShareUrlConsumed: () -> Unit,
 ) {
     val navController = rememberNavController()
-    // One-shot hand-off into Stash: consumed by the screen once it has acted on it.
+    // One-shot hand-offs into a tab: consumed by the destination screen once it has acted on them.
+    var moneySection by remember { mutableStateOf<MoneySection?>(null) }
     var stashSharedUrl by remember { mutableStateOf<String?>(null) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -125,6 +127,10 @@ private fun MainScreen(
         when {
             tab != null -> navigateToTab(tab)
             pendingRoute == DATES_ROUTE -> navController.navigate(DATES_ROUTE) { launchSingleTop = true }
+            pendingRoute == GOALS_PUSH_ROUTE -> {
+                moneySection = MoneySection.GOALS
+                navigateToTab(Tab.Money)
+            }
             else -> return@LaunchedEffect
         }
         onPendingRouteConsumed()
@@ -166,9 +172,15 @@ private fun MainScreen(
                         onNavigateToCycle = { navigateToTab(Tab.Cycle) },
                         onNavigateToStash = { navigateToTab(Tab.Stash) },
                         onNavigateToDates = { navController.navigate(DATES_ROUTE) { launchSingleTop = true } },
+                        onNavigateToGoals = {
+                            moneySection = MoneySection.GOALS
+                            navigateToTab(Tab.Money)
+                        },
                     )
                 }
-                composable(Tab.Money.route) { MoneyScreen() }
+                composable(Tab.Money.route) {
+                    MoneyScreen(initialSection = moneySection, onInitialSectionConsumed = { moneySection = null })
+                }
                 composable(Tab.Cycle.route) { CycleScreen() }
                 composable(Tab.Stash.route) {
                     StashScreen(sharedUrl = stashSharedUrl, onSharedUrlConsumed = { stashSharedUrl = null })

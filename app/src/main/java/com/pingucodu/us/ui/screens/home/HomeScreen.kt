@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.data.network.NudgeDto
+import com.pingucodu.us.data.network.SavingsGoalDto
 import com.pingucodu.us.data.network.SpecialDateDto
 import com.pingucodu.us.ui.components.NeoBottomSheet
 import com.pingucodu.us.ui.components.NeoChoiceChip
@@ -55,6 +56,8 @@ import com.pingucodu.us.ui.components.SubmitButton
 import com.pingucodu.us.ui.components.clickableNoRipple
 import com.pingucodu.us.ui.screens.dates.dateBadge
 import com.pingucodu.us.ui.screens.dates.dateSubtitle
+import com.pingucodu.us.ui.screens.money.GoalProgressBar
+import com.pingucodu.us.ui.screens.money.goalProgress
 import com.pingucodu.us.ui.theme.BorderWidth
 import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.DescriptionGrey
@@ -73,6 +76,7 @@ import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.YellowSoft
 import com.pingucodu.us.ui.theme.hardShadow
 import com.pingucodu.us.ui.util.LocalNameMask
+import com.pingucodu.us.ui.util.formatRupees
 
 private val CardShape = RoundedCornerShape(18.dp)
 private val TileShape = RoundedCornerShape(16.dp)
@@ -84,6 +88,7 @@ fun HomeScreen(
     onNavigateToCycle: () -> Unit = {},
     onNavigateToStash: () -> Unit = {},
     onNavigateToDates: () -> Unit = {},
+    onNavigateToGoals: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -163,6 +168,11 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     onClick = onNavigateToStash,
                 )
+            }
+
+            uiState.topGoal?.let { goal ->
+                Spacer(Modifier.height(16.dp))
+                GoalsTeaser(goal = goal, activeGoalCount = uiState.activeGoalCount, onClick = onNavigateToGoals)
             }
 
             if (uiState.activityFeed.isNotEmpty()) {
@@ -376,6 +386,41 @@ private fun NudgePickerSheet(onDismiss: () -> Unit, onSend: (String) -> Unit) {
 }
 
 private const val NUDGE_MAX_LENGTH = 80
+
+@Composable
+private fun GoalsTeaser(goal: SavingsGoalDto, activeGoalCount: Int, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .hardShadow(TileShape)
+            .border(BorderWidth, Ink, TileShape)
+            .background(MaterialTheme.colorScheme.surface, TileShape)
+            .clickableNoRipple(onClick)
+            .padding(14.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("SAVING UP", style = MaterialTheme.typography.labelMedium)
+            if (activeGoalCount > 1) {
+                Text("+${activeGoalCount - 1} more", style = MaterialTheme.typography.labelMedium, color = Ink.copy(alpha = 0.55f))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                listOfNotNull(goal.emoji, goal.name).joinToString(" "),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+            )
+            Text(
+                "${formatRupees(goal.savedCents)} / ${formatRupees(goal.targetCents)}",
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        GoalProgressBar(progress = goalProgress(goal), height = 14)
+    }
+}
 
 @Composable
 private fun RecurringExpenseRow(expense: ExpenseDto, onClick: () -> Unit) {

@@ -7,12 +7,15 @@ import com.pingucodu.us.data.cycle.CycleRepository
 import com.pingucodu.us.data.cycle.CycleStatusResult
 import com.pingucodu.us.data.dates.DatesRepository
 import com.pingucodu.us.data.dates.DatesResult
+import com.pingucodu.us.data.goals.GoalsRepository
+import com.pingucodu.us.data.goals.GoalsResult
 import com.pingucodu.us.data.money.BalanceResult
 import com.pingucodu.us.data.money.ExpenseRepository
 import com.pingucodu.us.data.money.ExpensesResult
 import com.pingucodu.us.data.network.CycleStatusDto
 import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.data.network.NudgeDto
+import com.pingucodu.us.data.network.SavingsGoalDto
 import com.pingucodu.us.data.network.SpecialDateDto
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.nudge.LatestNudgeResult
@@ -72,6 +75,8 @@ data class HomeUiState(
     val activityFeed: List<ActivityFeedItem> = emptyList(),
     val nextCountdown: SpecialDateDto? = null,
     val nextMilestone: SpecialDateDto? = null,
+    val topGoal: SavingsGoalDto? = null,
+    val activeGoalCount: Int = 0,
     val latestNudge: NudgeDto? = null,
     val latestNudgeTimeLabel: String = "",
     val nudgeStatus: NudgeStatus = NudgeStatus.Idle,
@@ -88,6 +93,7 @@ class HomeViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val nudgeRepository: NudgeRepository,
     private val datesRepository: DatesRepository,
+    private val goalsRepository: GoalsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -120,8 +126,9 @@ class HomeViewModel @Inject constructor(
                 // The "us" cards below are extras: if they fail, their cards just keep their last value
                 // instead of turning the whole dashboard into an error.
                 val datesDeferred = async { datesRepository.getDates() }
+                val goalsDeferred = async { goalsRepository.getGoals(status = "active") }
                 val nudgeDeferred = async { nudgeRepository.getLatest() }
-                applyExtras(datesDeferred.await(), nudgeDeferred.await())
+                applyExtras(datesDeferred.await(), goalsDeferred.await(), nudgeDeferred.await())
                 listOf(expensesDeferred.await(), balanceDeferred.await(), cycleDeferred.await(), stashDeferred.await())
             }
             _uiState.update { state ->
@@ -150,14 +157,22 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun applyExtras(dates: DatesResult, nudge: LatestNudgeResult) {
+    private fun applyExtras(dates: DatesResult, goals: GoalsResult, nudge: LatestNudgeResult) {
         _uiState.update { state ->
             val allDates = (dates as? DatesResult.Success)?.dates
+            val activeGoals = (goals as? GoalsResult.Success)?.goals
             val latestNudge = if (nudge is LatestNudgeResult.Success) nudge.nudge else state.latestNudge
             state.copy(
                 // The server sorts upcoming countdowns soonest-first and milestones by next anniversary.
                 nextCountdown = if (allDates != null) allDates.firstOrNull { it.kind == "countdown" && !it.isPast } else state.nextCountdown,
                 nextMilestone = if (allDates != null) allDates.firstOrNull { it.kind == "milestone" } else state.nextMilestone,
+                // Closest to done first - that's the one worth teasing on Home.
+                topGoal = if (activeGoals != null) {
+                    activeGoals.maxByOrNull { it.savedCents.toDouble() / it.targetCents }
+                } else {
+                    state.topGoal
+                },
+                activeGoalCount = activeGoals?.size ?: state.activeGoalCount,
                 latestNudge = latestNudge,
                 latestNudgeTimeLabel = latestNudge?.let { relativeTime(it.createdAt) } ?: "",
             )
