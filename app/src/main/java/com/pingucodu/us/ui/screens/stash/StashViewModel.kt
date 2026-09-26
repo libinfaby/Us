@@ -19,9 +19,11 @@ import com.pingucodu.us.data.stash.AddStashItemResult
 import com.pingucodu.us.data.stash.DeleteStashItemResult
 import com.pingucodu.us.data.stash.StashItemsResult
 import com.pingucodu.us.data.stash.StashRepository
+import com.pingucodu.us.data.stash.StashTagsResult
 import com.pingucodu.us.data.stash.ToggleStashItemResult
 import com.pingucodu.us.data.stash.UpdateStashItemResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,12 +43,18 @@ val STASH_TYPES = listOf(
 
 const val HANGOUTS_CATEGORY = "hangouts"
 const val ALL_CATEGORY = "all"
+private const val PAGE_SIZE = 10
 
 data class StashUiState(
     val isLoading: Boolean = true,
     val items: List<StashItemDto> = emptyList(),
     val tagsByType: Map<String, List<String>> = emptyMap(),
+    val allTags: List<String> = emptyList(),
     val category: String = ALL_CATEGORY,
+    val tag: String? = null,
+    val isLoadingMore: Boolean = false,
+    val endReached: Boolean = false,
+    val loadMoreFailed: Boolean = false,
     val currentUsername: String? = null,
     val errorMessage: String? = null,
     val showAddDialog: Boolean = false,
@@ -69,6 +77,11 @@ data class StashUiState(
 ) {
     val typeFilter: String? get() = if (category == ALL_CATEGORY || category == HANGOUTS_CATEGORY) null else category
     val isHangoutCategory: Boolean get() = category == HANGOUTS_CATEGORY
+
+    /** Tags that can narrow the current category - every tag under "all", else just that type's -
+     * alphabetical, so a tag is easy to find in the filter row. */
+    val filterTags: List<String>
+        get() = (typeFilter?.let { tagsByType[it].orEmpty() } ?: allTags).sortedWith(String.CASE_INSENSITIVE_ORDER)
 }
 
 @HiltViewModel
@@ -80,6 +93,8 @@ class StashViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(StashUiState())
     val uiState: StateFlow<StashUiState> = _uiState.asStateFlow()
+
+    private var itemsJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -95,7 +110,11 @@ class StashViewModel @Inject constructor(
         // Switching type filters is a full data-set swap, not a refresh of what's on screen -
         // drop the stale items right away so the list falls back to skeleton cards instead of
         // briefly showing the previous category's items under a spurious pull-to-refresh spinner.
-        _uiState.update { it.copy(category = category, items = emptyList()) }
+        // A tag filter carries over only if the new category actually has that tag.
+        _uiState.update {
+            val next = it.copy(category = category, items = emptyList())
+            next.copy(tag = it.tag?.takeIf { tag -> tag in next.filterTags })
+        }
         if (category == HANGOUTS_CATEGORY) {
             if (!_uiState.value.hangoutsLoaded) refreshHangouts()
         } else {
@@ -103,33 +122,88 @@ class StashViewModel @Inject constructor(
         }
     }
 
-    fun refresh() {
-        val typeFilter = _uiState.value.typeFilter
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            when (val result = stashRepository.getItems(status = "everything", type = typeFilter)) {
-                is StashItemsResult.Success -> _uiState.update { it.copy(isLoading = false, items = result.items) }
+    /** Tapping the selected tag again clears it. */
+    fun setTag(tag: String?) {
+        val next = tag?.takeIf { it != _uiState.value.tag }
+        _uiState.update { it.copy(tag = next, items = emptyList()) }
+        refresh()
+    }
+
+    /** Filter change / pull-to-refresh: start over from the first page. */
+    fun refresh() = loadItems(limit = PAGE_SIZE)
+
+    /** After a mutation, re-fetch everything already scrolled in (in one request) rather than
+     * snapping back to page one, so the list updates in place and keeps its scroll position. */
+    private fun reloadLoaded() = loadItems(limit = maxOf(PAGE_SIZE, _uiState.value.items.size))
+
+    private fun loadItems(limit: Int) {
+        val state = _uiState.value
+        itemsJob?.cancel()
+        itemsJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, isLoadingMore = false, loadMoreFailed = false, errorMessage = null) }
+            val result = stashRepository.getItems(
+                status = "everything",
+                type = state.typeFilter,
+                tag = state.tag,
+                limit = limit,
+                offset = 0,
+            )
+            when (result) {
+                is StashItemsResult.Success ->
+                    _uiState.update {
+                        it.copy(isLoading = false, items = result.items, endReached = result.items.size < limit)
+                    }
                 is StashItemsResult.NetworkError ->
                     _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
             }
         }
     }
 
-    /** Tags ever used, grouped by item type — powers the "suggested tags" chips in the add/edit
-     * form so previously-used tags are one tap away, without leaking tags from other types
-     * (e.g. a "thriller" tag on a movie has no business suggesting itself on a place). */
-    fun refreshAllTags() {
-        viewModelScope.launch {
-            when (val result = stashRepository.getItems(status = "everything", type = null)) {
+    /** Appends the next page - called as the list nears its bottom, Instagram-style. */
+    fun loadMore() {
+        val state = _uiState.value
+        if (state.isHangoutCategory || state.endReached || state.isLoading || state.isLoadingMore) return
+        if (itemsJob?.isActive == true) return
+        itemsJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingMore = true, loadMoreFailed = false) }
+            val result = stashRepository.getItems(
+                status = "everything",
+                type = state.typeFilter,
+                tag = state.tag,
+                limit = PAGE_SIZE,
+                offset = state.items.size,
+            )
+            when (result) {
                 is StashItemsResult.Success ->
                     _uiState.update {
                         it.copy(
-                            tagsByType = result.items
-                                .groupBy { item -> item.type }
-                                .mapValues { (_, items) -> items.flatMap { item -> item.tags }.distinct() },
+                            isLoadingMore = false,
+                            // Offsets can shift if the partner adds something mid-scroll - never show an item twice.
+                            items = (it.items + result.items).distinctBy { item -> item.id },
+                            endReached = result.items.size < PAGE_SIZE,
                         )
                     }
-                is StashItemsResult.NetworkError -> Unit
+                is StashItemsResult.NetworkError ->
+                    _uiState.update { it.copy(isLoadingMore = false, loadMoreFailed = true, errorMessage = result.message) }
+            }
+        }
+    }
+
+    /** Tags ever used, grouped by item type — powers the "suggested tags" chips in the add/edit
+     * form so previously-used tags are one tap away, without leaking tags from other types
+     * (e.g. a "thriller" tag on a movie has no business suggesting itself on a place). Also
+     * feeds the tag filter row. */
+    fun refreshAllTags() {
+        viewModelScope.launch {
+            when (val result = stashRepository.getTags()) {
+                is StashTagsResult.Success ->
+                    _uiState.update {
+                        it.copy(
+                            tagsByType = result.tags.groupBy({ t -> t.type }, { t -> t.tag }),
+                            allTags = result.tags.map { t -> t.tag }.distinct(),
+                        )
+                    }
+                is StashTagsResult.NetworkError -> Unit
             }
         }
     }
@@ -167,7 +241,7 @@ class StashViewModel @Inject constructor(
                     is AddStashItemResult.Success -> {
                         _uiState.update { it.copy(isSubmitting = false) }
                         dismissDialog()
-                        refresh()
+                        reloadLoaded()
                         refreshAllTags()
                     }
                     is AddStashItemResult.ValidationError ->
@@ -180,7 +254,7 @@ class StashViewModel @Inject constructor(
                     is UpdateStashItemResult.Success -> {
                         _uiState.update { it.copy(isSubmitting = false) }
                         dismissDialog()
-                        refresh()
+                        reloadLoaded()
                         refreshAllTags()
                     }
                     is UpdateStashItemResult.ValidationError ->
@@ -195,7 +269,7 @@ class StashViewModel @Inject constructor(
     fun toggleItem(id: String) {
         viewModelScope.launch {
             when (val result = stashRepository.toggleItem(id)) {
-                is ToggleStashItemResult.Success -> refresh()
+                is ToggleStashItemResult.Success -> reloadLoaded()
                 is ToggleStashItemResult.NetworkError -> _uiState.update { it.copy(errorMessage = result.message) }
             }
         }
@@ -205,7 +279,7 @@ class StashViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = stashRepository.deleteItem(id)) {
                 DeleteStashItemResult.Success -> {
-                    refresh()
+                    reloadLoaded()
                     refreshAllTags()
                 }
                 is DeleteStashItemResult.NetworkError -> _uiState.update { it.copy(errorMessage = result.message) }
@@ -218,15 +292,14 @@ class StashViewModel @Inject constructor(
     fun renameTag(type: String, oldTag: String, newTag: String) {
         if (newTag == oldTag) return
         viewModelScope.launch {
-            when (val result = stashRepository.getItems(status = "everything", type = null)) {
+            when (val result = stashRepository.getItems(status = "everything", type = type, tag = oldTag)) {
                 is StashItemsResult.Success -> {
-                    result.items
-                        .filter { it.type == type && oldTag in it.tags }
-                        .forEach { item ->
-                            val updatedTags = item.tags.map { t -> if (t == oldTag) newTag else t }.distinct()
-                            stashRepository.updateItem(item.id, StashItemRequest(tags = updatedTags))
-                        }
-                    refresh()
+                    result.items.forEach { item ->
+                        val updatedTags = item.tags.map { t -> if (t == oldTag) newTag else t }.distinct()
+                        stashRepository.updateItem(item.id, StashItemRequest(tags = updatedTags))
+                    }
+                    _uiState.update { if (it.tag == oldTag) it.copy(tag = newTag) else it }
+                    reloadLoaded()
                     refreshAllTags()
                 }
                 is StashItemsResult.NetworkError -> _uiState.update { it.copy(errorMessage = result.message) }
@@ -237,14 +310,13 @@ class StashViewModel @Inject constructor(
     /** Deletes a tag from every [type] item that has it - see [renameTag]. */
     fun deleteTag(type: String, tag: String) {
         viewModelScope.launch {
-            when (val result = stashRepository.getItems(status = "everything", type = null)) {
+            when (val result = stashRepository.getItems(status = "everything", type = type, tag = tag)) {
                 is StashItemsResult.Success -> {
-                    result.items
-                        .filter { it.type == type && tag in it.tags }
-                        .forEach { item ->
-                            stashRepository.updateItem(item.id, StashItemRequest(tags = item.tags - tag))
-                        }
-                    refresh()
+                    result.items.forEach { item ->
+                        stashRepository.updateItem(item.id, StashItemRequest(tags = item.tags - tag))
+                    }
+                    _uiState.update { if (it.tag == tag) it.copy(tag = null) else it }
+                    reloadLoaded()
                     refreshAllTags()
                 }
                 is StashItemsResult.NetworkError -> _uiState.update { it.copy(errorMessage = result.message) }

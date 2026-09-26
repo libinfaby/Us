@@ -6,6 +6,7 @@ import com.pingucodu.us.data.network.ErrorResponse
 import com.pingucodu.us.data.network.toUserMessage
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
+import com.pingucodu.us.data.network.StashTagDto
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import retrofit2.Response
@@ -16,6 +17,11 @@ import javax.inject.Singleton
 sealed interface StashItemsResult {
     data class Success(val items: List<StashItemDto>) : StashItemsResult
     data class NetworkError(val message: String) : StashItemsResult
+}
+
+sealed interface StashTagsResult {
+    data class Success(val tags: List<StashTagDto>) : StashTagsResult
+    data class NetworkError(val message: String) : StashTagsResult
 }
 
 sealed interface AddStashItemResult {
@@ -54,10 +60,16 @@ class StashRepository @Inject constructor(
         return parsed?.error ?: "unexpected error (${response.code()})"
     }
 
-    suspend fun getItems(status: String = "saved", type: String? = null): StashItemsResult {
+    suspend fun getItems(
+        status: String = "saved",
+        type: String? = null,
+        tag: String? = null,
+        limit: Int? = null,
+        offset: Int? = null,
+    ): StashItemsResult {
         val token = bearerToken() ?: return StashItemsResult.NetworkError("not logged in")
         val response = try {
-            api.getStash(token, status, type)
+            api.getStash(token, status, type, tag, limit, offset)
         } catch (e: IOException) {
             return StashItemsResult.NetworkError(e.toUserMessage())
         }
@@ -66,6 +78,21 @@ class StashRepository @Inject constructor(
             StashItemsResult.Success(body)
         } else {
             StashItemsResult.NetworkError(errorMessage(response))
+        }
+    }
+
+    suspend fun getTags(): StashTagsResult {
+        val token = bearerToken() ?: return StashTagsResult.NetworkError("not logged in")
+        val response = try {
+            api.getStashTags(token)
+        } catch (e: IOException) {
+            return StashTagsResult.NetworkError(e.toUserMessage())
+        }
+        val body = response.body()
+        return if (response.isSuccessful && body != null) {
+            StashTagsResult.Success(body)
+        } else {
+            StashTagsResult.NetworkError(errorMessage(response))
         }
     }
 

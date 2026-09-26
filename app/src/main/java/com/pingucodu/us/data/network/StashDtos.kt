@@ -15,6 +15,10 @@ data class StashItemDto(
     val updatedAt: String,
 )
 
+/** One tag in use on at least one item of [type]; the list comes back most recently used first. */
+@Serializable
+data class StashTagDto(val type: String, val tag: String)
+
 /** Shared shape for both creating (POST) and partially editing (PATCH) a stash item. */
 @Serializable
 data class StashItemRequest(

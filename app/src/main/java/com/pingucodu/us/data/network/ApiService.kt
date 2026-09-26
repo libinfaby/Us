@@ -143,7 +143,13 @@ interface ApiService {
         @Header("Authorization") bearerToken: String,
         @Query("status") status: String? = null,
         @Query("type") type: String? = null,
+        @Query("tag") tag: String? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("offset") offset: Int? = null,
     ): Response<List<StashItemDto>>
+
+    @GET("stash/tags")
+    suspend fun getStashTags(@Header("Authorization") bearerToken: String): Response<List<StashTagDto>>
 
     @POST("stash")
     suspend fun createStashItem(

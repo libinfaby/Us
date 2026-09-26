@@ -29,8 +29,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +48,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -112,6 +115,7 @@ import java.util.Locale
 private val CardShape = RoundedCornerShape(14.dp)
 private val SQLITE_DATETIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 private val HANGOUT_PALETTE = listOf(Pink, Teal, YellowSoft)
+private const val LOAD_MORE_THRESHOLD = 3
 
 @Composable
 fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltViewModel()) {
@@ -134,6 +138,10 @@ fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltV
             Spacer(Modifier.height(4.dp))
             CategoryRow(selected = uiState.category, onSelect = viewModel::setCategory)
             Spacer(Modifier.height(12.dp))
+            if (!uiState.isHangoutCategory && (uiState.filterTags.isNotEmpty() || uiState.tag != null)) {
+                TagFilterRow(tags = uiState.filterTags, selected = uiState.tag, onSelect = viewModel::setTag)
+                Spacer(Modifier.height(8.dp))
+            }
 
             if (uiState.errorMessage != null) {
                 Text(
@@ -160,6 +168,10 @@ fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltV
                 StashItemsSection(
                     isLoading = uiState.isLoading,
                     items = uiState.items,
+                    tag = uiState.tag,
+                    isLoadingMore = uiState.isLoadingMore,
+                    loadMoreFailed = uiState.loadMoreFailed,
+                    onLoadMore = viewModel::loadMore,
                     onToggle = viewModel::toggleItem,
                     onEdit = viewModel::openEditDialog,
                     onDelete = { itemToDelete = it },
@@ -310,6 +322,38 @@ private fun Pill(
     }
 }
 
+/** Horizontally scrolling tag chips; tapping the selected one clears the filter. */
+@Composable
+private fun TagFilterRow(tags: List<String>, selected: String?, onSelect: (String) -> Unit) {
+    // Keep the active tag reachable even if it just vanished from the list (e.g. its last item
+    // was edited), otherwise there'd be no chip left to tap to clear it.
+    val shown = if (selected != null && selected !in tags) listOf(selected) + tags else tags
+    LazyRow(
+        contentPadding = PaddingValues(start = 20.dp, top = 2.dp, end = 20.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        items(shown, key = { it }) { tag ->
+            TagFilterChip(tag = tag, selected = tag == selected, onClick = { onSelect(tag) })
+        }
+    }
+}
+
+@Composable
+private fun TagFilterChip(tag: String, selected: Boolean, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(50)
+    Box(
+        modifier = Modifier
+            .let { if (selected) it.hardShadow(shape, offsetX = 2.dp, offsetY = 2.dp) else it }
+            .border(2.dp, Ink, shape)
+            .background(if (selected) Teal else PinkTint, shape)
+            .combinedClickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Text(if (selected) "#$tag  ×" else "#$tag", style = PinguCoduType.monoLabel, color = Ink)
+    }
+}
+
 private fun typeBadgeColor(type: String): Color = when (type) {
     "movie", "todo" -> Pink
     "place" -> Teal
@@ -405,6 +449,10 @@ private fun relativeTime(sqliteDateTime: String): String = try {
 private fun StashItemsSection(
     isLoading: Boolean,
     items: List<StashItemDto>,
+    tag: String?,
+    isLoadingMore: Boolean,
+    loadMoreFailed: Boolean,
+    onLoadMore: () -> Unit,
     onToggle: (String) -> Unit,
     onEdit: (StashItemDto) -> Unit,
     onDelete: (StashItemDto) -> Unit,
@@ -420,23 +468,48 @@ private fun StashItemsSection(
         }
         items.isEmpty() -> {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("nothing here yet", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    if (tag != null) "nothing tagged #$tag here" else "nothing here yet",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
         else -> {
-            // pending todos first, done ones sink to the bottom; everything else keeps its order.
-            val sortedItems = items.sortedBy { it.status == "done" }
+            // Items arrive page by page, already ordered by the server (pending first, done ones
+            // sunk to the bottom). Ask for the next page a few cards before the end so it's usually
+            // in before the user gets there.
+            val listState = rememberLazyListState()
+            val nearEnd by remember {
+                derivedStateOf {
+                    val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                    lastVisible >= listState.layoutInfo.totalItemsCount - 1 - LOAD_MORE_THRESHOLD
+                }
+            }
+            // Keyed on the size too: if a freshly appended page still doesn't fill the screen,
+            // nearEnd stays true and this needs to fire again for the page after.
+            LaunchedEffect(nearEnd, items.size) {
+                if (nearEnd) onLoadMore()
+            }
             LazyColumn(
+                state = listState,
                 contentPadding = PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 210.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(sortedItems, key = { it.id }) { item ->
+                items(items, key = { it.id }) { item ->
                     StashItemCard(
                         item = item,
                         onToggle = { onToggle(item.id) },
                         onEdit = { onEdit(item) },
                         onDelete = { onDelete(item) },
                     )
+                }
+                when {
+                    isLoadingMore -> item(key = "loading-more") { SkeletonStashItemCard() }
+                    loadMoreFailed -> item(key = "load-more-failed") {
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            PillActionButton(label = "couldn't load more · retry", background = Color.White, contentColor = Ink, onClick = onLoadMore)
+                        }
+                    }
                 }
             }
         }

@@ -53,6 +53,11 @@ function toItemJson(row: StashRow) {
   };
 }
 
+function parseNonNegativeInt(value: string | undefined): number | null | undefined {
+  if (value === undefined) return undefined;
+  return /^\d+$/.test(value) ? Number(value) : null;
+}
+
 stashRoutes.get('/', async (c) => {
   const statusParam = c.req.query('status') ?? 'saved';
   if (!isStatusFilter(statusParam)) {
@@ -62,9 +67,15 @@ stashRoutes.get('/', async (c) => {
   if (typeParam !== undefined && !isType(typeParam)) {
     return c.json({ error: 'invalid type' }, 400);
   }
+  const tagParam = c.req.query('tag');
+  const limit = parseNonNegativeInt(c.req.query('limit'));
+  const offset = parseNonNegativeInt(c.req.query('offset'));
+  if (limit === null || limit === 0 || offset === null) {
+    return c.json({ error: 'limit must be a positive integer and offset a non-negative integer' }, 400);
+  }
 
   const conditions: string[] = [];
-  const bindings: string[] = [];
+  const bindings: (string | number)[] = [];
   if (statusParam !== 'everything') {
     conditions.push('status = ?');
     bindings.push(statusParam);
@@ -73,12 +84,36 @@ stashRoutes.get('/', async (c) => {
     conditions.push('type = ?');
     bindings.push(typeParam);
   }
+  if (tagParam) {
+    conditions.push('EXISTS (SELECT 1 FROM json_each(stash_items.tags_json) WHERE value = ?)');
+    bindings.push(tagParam);
+  }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  const { results } = await c.env.DB.prepare(`SELECT * FROM stash_items ${where} ORDER BY created_at DESC`)
+  // Done items sink below pending ones server-side so paging stays consistent with what the
+  // app shows; id breaks created_at ties (second resolution) so pages never overlap or skip.
+  let sql = `SELECT * FROM stash_items ${where} ORDER BY status = 'done', created_at DESC, id`;
+  if (limit !== undefined) {
+    sql += ' LIMIT ? OFFSET ?';
+    bindings.push(limit, offset ?? 0);
+  }
+
+  const { results } = await c.env.DB.prepare(sql)
     .bind(...bindings)
     .all<StashRow>();
   return c.json(results.map(toItemJson));
+});
+
+/** Every (type, tag) pair in use, most recently used first - lets the app build tag
+ * suggestions and filters without downloading every item. */
+stashRoutes.get('/tags', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT s.type AS type, j.value AS tag, MAX(s.created_at) AS last_used
+     FROM stash_items s, json_each(s.tags_json) j
+     GROUP BY s.type, j.value
+     ORDER BY last_used DESC`,
+  ).all<{ type: StashType; tag: string }>();
+  return c.json(results.map((r) => ({ type: r.type, tag: r.tag })));
 });
 
 stashRoutes.post('/', async (c) => {
