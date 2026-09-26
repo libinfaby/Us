@@ -19,3 +19,4 @@ enum class Tab(val route: String, val label: String, val shape: Shape) {
 
 /** Routes reachable from within the main screen that aren't bottom-nav tabs. */
 const val SETTINGS_ROUTE = "settings"
+const val DATES_ROUTE = "dates"

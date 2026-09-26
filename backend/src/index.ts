@@ -7,6 +7,8 @@ import { cycleRoutes } from './routes/cycle';
 import { stashRoutes } from './routes/stash';
 import { devicesRoutes } from './routes/devices';
 import { nudgesRoutes } from './routes/nudges';
+import { datesRoutes } from './routes/dates';
+import { runDailyReminders } from './lib/reminders';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -18,5 +20,12 @@ app.route('/cycle', cycleRoutes);
 app.route('/stash', stashRoutes);
 app.route('/devices', devicesRoutes);
 app.route('/nudges', nudgesRoutes);
+app.route('/dates', datesRoutes);
 
-export default app;
+export default {
+  fetch: app.fetch,
+  // Daily cron (see "triggers" in wrangler.jsonc) - countdown and anniversary reminders.
+  scheduled(_controller, env, ctx) {
+    ctx.waitUntil(runDailyReminders(env));
+  },
+} satisfies ExportedHandler<Env>;

@@ -47,6 +47,7 @@ import androidx.navigation.compose.rememberNavController
 import com.pingucodu.us.ui.auth.AuthStatus
 import com.pingucodu.us.ui.auth.AuthViewModel
 import com.pingucodu.us.ui.screens.cycle.CycleScreen
+import com.pingucodu.us.ui.screens.dates.DatesScreen
 import com.pingucodu.us.ui.screens.home.HomeScreen
 import com.pingucodu.us.ui.screens.login.LoginScreen
 import com.pingucodu.us.ui.screens.money.MoneyScreen
@@ -111,10 +112,12 @@ private fun MainScreen(
     // jump there once and clear it so recomposition/back-nav doesn't re-trigger the jump.
     LaunchedEffect(pendingRoute) {
         val tab = Tab.entries.firstOrNull { it.route == pendingRoute }
-        if (tab != null) {
-            navigateToTab(tab)
-            onPendingRouteConsumed()
+        when {
+            tab != null -> navigateToTab(tab)
+            pendingRoute == DATES_ROUTE -> navController.navigate(DATES_ROUTE) { launchSingleTop = true }
+            else -> return@LaunchedEffect
         }
+        onPendingRouteConsumed()
     }
 
     Scaffold(
@@ -143,6 +146,7 @@ private fun MainScreen(
                         onNavigateToMoney = { navigateToTab(Tab.Money) },
                         onNavigateToCycle = { navigateToTab(Tab.Cycle) },
                         onNavigateToStash = { navigateToTab(Tab.Stash) },
+                        onNavigateToDates = { navController.navigate(DATES_ROUTE) { launchSingleTop = true } },
                     )
                 }
                 composable(Tab.Money.route) { MoneyScreen() }
@@ -150,6 +154,9 @@ private fun MainScreen(
                 composable(Tab.Stash.route) { StashScreen() }
                 composable(SETTINGS_ROUTE) {
                     SettingsScreen(onBack = { navController.popBackStack() })
+                }
+                composable(DATES_ROUTE) {
+                    DatesScreen(onBack = { navController.popBackStack() })
                 }
             }
             if (isTabRoute) {

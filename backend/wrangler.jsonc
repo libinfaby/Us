@@ -5,6 +5,9 @@
   "compatibility_date": "2026-09-11",
   "compatibility_flags": ["nodejs_compat"],
 
+  // 02:30 UTC = 08:00 IST - daily countdown/anniversary reminders (src/lib/reminders.ts).
+  "triggers": { "crons": ["30 2 * * *"] },
+
   // Filled in after running `npx wrangler d1 create pingu-codu-db` (Phase 3 step 2).
   "d1_databases": [
     {

@@ -191,4 +191,26 @@ interface ApiService {
     @GET("nudges/latest")
     suspend fun getLatestNudge(@Header("Authorization") bearerToken: String): Response<LatestNudgeResponse>
 
+    @GET("dates")
+    suspend fun getDates(@Header("Authorization") bearerToken: String): Response<List<SpecialDateDto>>
+
+    @POST("dates")
+    suspend fun createDate(
+        @Header("Authorization") bearerToken: String,
+        @Body request: SpecialDateRequest,
+    ): Response<SpecialDateDto>
+
+    @PATCH("dates/{id}")
+    suspend fun updateDate(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+        @Body request: SpecialDateRequest,
+    ): Response<SpecialDateDto>
+
+    @DELETE("dates/{id}")
+    suspend fun deleteDate(
+        @Header("Authorization") bearerToken: String,
+        @Path("id") id: String,
+    ): Response<Unit>
+
 }

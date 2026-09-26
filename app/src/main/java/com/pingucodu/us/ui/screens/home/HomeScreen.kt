@@ -46,11 +46,15 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.data.network.NudgeDto
+import com.pingucodu.us.data.network.SpecialDateDto
 import com.pingucodu.us.ui.components.NeoBottomSheet
 import com.pingucodu.us.ui.components.NeoChoiceChip
 import com.pingucodu.us.ui.components.NeoField
 import com.pingucodu.us.ui.components.SectionLabel
 import com.pingucodu.us.ui.components.SubmitButton
+import com.pingucodu.us.ui.components.clickableNoRipple
+import com.pingucodu.us.ui.screens.dates.dateBadge
+import com.pingucodu.us.ui.screens.dates.dateSubtitle
 import com.pingucodu.us.ui.theme.BorderWidth
 import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.DescriptionGrey
@@ -79,6 +83,7 @@ fun HomeScreen(
     onNavigateToMoney: () -> Unit = {},
     onNavigateToCycle: () -> Unit = {},
     onNavigateToStash: () -> Unit = {},
+    onNavigateToDates: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -112,6 +117,13 @@ fun HomeScreen(
                 Spacer(Modifier.height(110.dp))
                 return@Column
             }
+
+            DatesCard(
+                nextCountdown = uiState.nextCountdown,
+                nextMilestone = uiState.nextMilestone,
+                onClick = onNavigateToDates,
+            )
+            Spacer(Modifier.height(16.dp))
 
             ScoreCard(
                 net = uiState.net,
@@ -205,6 +217,60 @@ fun HomeScreen(
                 showNudgePicker = false
             },
         )
+    }
+}
+
+@Composable
+private fun DatesCard(nextCountdown: SpecialDateDto?, nextMilestone: SpecialDateDto?, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .hardShadow(CardShape)
+            .border(BorderWidth, Ink, CardShape)
+            .background(MaterialTheme.colorScheme.surface, CardShape)
+            .clickableNoRipple(onClick)
+            .padding(14.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("OUR DATES", style = MaterialTheme.typography.labelMedium)
+            Text("see all →", style = MaterialTheme.typography.labelMedium, color = Ink.copy(alpha = 0.55f))
+        }
+        if (nextCountdown == null && nextMilestone == null) {
+            Spacer(Modifier.height(8.dp))
+            Text("add a countdown or a day to remember ⏳💕", style = MaterialTheme.typography.bodyMedium)
+            return@Column
+        }
+        listOfNotNull(nextCountdown, nextMilestone).forEach { date ->
+            Spacer(Modifier.height(10.dp))
+            MiniDateRow(date)
+        }
+    }
+}
+
+@Composable
+private fun MiniDateRow(date: SpecialDateDto) {
+    val (number, unit) = dateBadge(date)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .border(2.dp, Ink, RoundedCornerShape(10.dp))
+                .background(if (date.kind == "milestone") Pink else Teal, RoundedCornerShape(10.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            Text(number, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.width(4.dp))
+            Text(unit, style = PinguCoduType.monoLabel)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                listOfNotNull(date.emoji, date.title).joinToString(" "),
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                maxLines = 1,
+            )
+            Text(dateSubtitle(date), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        }
     }
 }
 
