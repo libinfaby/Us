@@ -188,6 +188,18 @@ interface ApiService {
         @Query("url") url: String,
     ): Response<LinkPreviewDto>
 
+    @GET("stash/movie-search")
+    suspend fun searchMovies(
+        @Header("Authorization") bearerToken: String,
+        @Query("q") query: String,
+    ): Response<List<MovieSearchResultDto>>
+
+    @GET("stash/movie-preview")
+    suspend fun getMoviePreview(
+        @Header("Authorization") bearerToken: String,
+        @Query("id") id: String,
+    ): Response<LinkPreviewDto>
+
     @POST("nudges")
     suspend fun sendNudge(
         @Header("Authorization") bearerToken: String,

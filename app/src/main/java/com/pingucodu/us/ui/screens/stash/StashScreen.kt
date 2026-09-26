@@ -85,6 +85,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.HangoutDto
 import com.pingucodu.us.data.network.HangoutMemoryDto
 import com.pingucodu.us.data.network.LinkPreviewDto
+import com.pingucodu.us.data.network.MovieSearchResultDto
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import com.pingucodu.us.ui.components.DateField
@@ -235,6 +236,12 @@ fun StashScreen(
             isFetchingPreview = uiState.isFetchingPreview,
             previewError = uiState.previewError,
             onFetchPreview = { viewModel.fetchPreview(normalizeUrl(it)) },
+            movieResults = uiState.movieResults,
+            isSearchingMovies = uiState.isSearchingMovies,
+            movieSearchError = uiState.movieSearchError,
+            onSearchMovies = viewModel::searchMovies,
+            onPickMovie = viewModel::pickMovie,
+            onClearMovieResults = viewModel::clearMovieResults,
             onDismiss = viewModel::dismissDialog,
             onSubmit = viewModel::submitItem,
             onRenameTag = viewModel::renameTag,
@@ -862,8 +869,9 @@ private fun FetchLinkChip(enabled: Boolean, isFetching: Boolean, onClick: () -> 
     }
 }
 
+/** Small teal pill under the title: "find on maps" for places, "find movie" for movies. */
 @Composable
-private fun FindOnMapsChip(enabled: Boolean, onClick: () -> Unit) {
+private fun FindChip(label: String, enabled: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     Box(
         modifier = Modifier
@@ -873,7 +881,25 @@ private fun FindOnMapsChip(enabled: Boolean, onClick: () -> Unit) {
             .padding(horizontal = 14.dp, vertical = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text("📍 find on maps", style = MaterialTheme.typography.labelLarge, color = if (enabled) Ink else Ink.copy(alpha = 0.35f))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = if (enabled) Ink else Ink.copy(alpha = 0.35f))
+    }
+}
+
+/** One film from a name search: its title, and the line that tells same-named films apart. */
+@Composable
+private fun MovieResultRow(movie: MovieSearchResultDto, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(2.dp, Ink, shape)
+            .background(Color.White, shape)
+            .clickableNoRipple(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(movie.title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = Ink)
+        Spacer(Modifier.height(2.dp))
+        Text(movie.description, style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
     }
 }
 
@@ -906,6 +932,12 @@ private fun StashItemFormDialog(
     isFetchingPreview: Boolean,
     previewError: String?,
     onFetchPreview: (String) -> Unit,
+    movieResults: List<MovieSearchResultDto>?,
+    isSearchingMovies: Boolean,
+    movieSearchError: String?,
+    onSearchMovies: (String) -> Unit,
+    onPickMovie: (MovieSearchResultDto) -> Unit,
+    onClearMovieResults: () -> Unit,
     onDismiss: () -> Unit,
     onSubmit: (StashItemRequest) -> Unit,
     onRenameTag: (type: String, oldTag: String, newTag: String) -> Unit,
@@ -958,7 +990,8 @@ private fun StashItemFormDialog(
             val knownTags = tagsByType[type].orEmpty() + tags
             tags = tags + preview.genres.map { genre -> knownTags.firstOrNull { it.equals(genre, ignoreCase = true) } ?: genre }
         }
-        url = preview.url
+        // A picked film without an IMDb id comes back with no link - keep whatever is in the box.
+        if (preview.url.isNotEmpty()) url = preview.url
     }
 
     NeoBottomSheet(title = if (item == null) "share something" else "edit item", onDismiss = onDismiss) {
@@ -1007,13 +1040,51 @@ private fun StashItemFormDialog(
                 titleTyped = true
             },
             placeholder = titlePlaceholder(type),
+            keyboardOptions = if (type == "movie") KeyboardOptions(imeAction = ImeAction.Search) else KeyboardOptions.Default,
+            keyboardActions = KeyboardActions(onSearch = { if (title.isNotBlank()) onSearchMovies(title) }),
             modifier = Modifier.fillMaxWidth(),
         )
 
         if (type == "place") {
             Spacer(Modifier.height(10.dp))
-            FindOnMapsChip(enabled = title.isNotBlank()) {
+            FindChip(label = "📍 find on maps", enabled = title.isNotBlank()) {
                 uriHandler.openUri(googleMapsSearchUrl(title))
+            }
+        }
+        if (type == "movie") {
+            Spacer(Modifier.height(10.dp))
+            FindChip(
+                label = if (isSearchingMovies) "finding…" else "find movie",
+                enabled = title.isNotBlank() && !isSearchingMovies && !isFetchingPreview,
+            ) { onSearchMovies(title) }
+            if (movieSearchError != null) {
+                Spacer(Modifier.height(8.dp))
+                ErrorBanner(movieSearchError)
+            }
+            if (movieResults != null) {
+                Spacer(Modifier.height(10.dp))
+                if (movieResults.isEmpty()) {
+                    Text("no movies found - try another name", style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
+                } else {
+                    Text("pick the right one", style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
+                    Spacer(Modifier.height(6.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        movieResults.forEach { movie ->
+                            MovieResultRow(movie) {
+                                // The picked film's title replaces the typed name.
+                                titleTyped = false
+                                onPickMovie(movie)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "none of these",
+                        style = PinguCoduType.monoLabel,
+                        color = DescriptionGrey,
+                        modifier = Modifier.clickableNoRipple(onClick = onClearMovieResults),
+                    )
+                }
             }
         }
         Spacer(Modifier.height(14.dp))

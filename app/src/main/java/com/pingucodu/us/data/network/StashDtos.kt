@@ -42,3 +42,12 @@ data class LinkPreviewDto(
     val genres: List<String> = emptyList(),
     val suggestedType: String,
 )
+
+/** One film matching a typed name: `GET /stash/movie-search`. [id] is its Wikidata id, passed to
+ * `GET /stash/movie-preview` once picked; [description] tells same-named films apart. */
+@Serializable
+data class MovieSearchResultDto(
+    val id: String,
+    val title: String,
+    val description: String,
+)

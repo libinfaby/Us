@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { requireAuth, type AuthVariables } from '../middleware/auth';
 import { notifyPartner } from '../lib/notify';
-import { fetchLinkPreview, isSupportedPreviewUrl, parseHttpUrl } from '../lib/linkPreview';
+import { fetchLinkPreview, filmPreview, isSupportedPreviewUrl, parseHttpUrl, searchMovies } from '../lib/linkPreview';
 
 export const stashRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -135,6 +135,22 @@ stashRoutes.get('/preview', async (c) => {
   if (!isSupportedPreviewUrl(url)) return c.json({ error: 'only imdb and google maps links can be fetched' }, 400);
   const preview = await fetchLinkPreview(url);
   if (!preview) return c.json({ error: "couldn't read that link - fill it in by hand" }, 422);
+  return c.json(preview);
+});
+
+/** Films matching a typed name, for the movie form's "find" button. */
+stashRoutes.get('/movie-search', async (c) => {
+  const query = (c.req.query('q') ?? '').trim().slice(0, 100);
+  if (query.length === 0) return c.json({ error: 'type a movie name first' }, 400);
+  const results = await searchMovies(query);
+  if (!results) return c.json({ error: "couldn't search right now - try again" }, 502);
+  return c.json(results);
+});
+
+/** Title, plot, genres and IMDb link for a film picked from /movie-search, by its Wikidata id. */
+stashRoutes.get('/movie-preview', async (c) => {
+  const preview = await filmPreview(c.req.query('id') ?? '');
+  if (!preview) return c.json({ error: "couldn't load that movie - fill it in by hand" }, 422);
   return c.json(preview);
 });
 

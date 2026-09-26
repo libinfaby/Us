@@ -6,7 +6,8 @@
 const FETCH_TIMEOUT_MS = 6000;
 const MAX_MAPS_REDIRECTS = 5;
 const MAX_GENRES = 3;
-const USER_AGENT = 'PinguCoduLinkPreview/1.0 (+personal app)';
+// Wikimedia gives clients a far higher rate limit (200/min vs 10/min) when the User-Agent carries contact info.
+const USER_AGENT = 'PinguCoduLinkPreview/1.0 (https://github.com/libinfaby/Us)';
 
 export type LinkPreview = {
   url: string;
@@ -134,16 +135,27 @@ function toGenreTags(names: (string | null | undefined)[]): string[] {
 
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
 
+/** GETs JSON; on HTTP 429 (Wikimedia rate-limits shared Cloudflare IPs now and then) waits a moment and tries once more. */
 async function fetchJson<T>(url: string): Promise<T | null> {
-  try {
-    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-    return res.ok ? ((await res.json()) as T) : null;
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      if (res.status === 429 && attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      }
+      return res.ok ? ((await res.json()) as T) : null;
+    } catch {
+      return null;
+    }
   }
+  return null;
 }
 
+const WIKIPEDIA_API = 'https://en.wikipedia.org/w/api.php';
 const MAX_SUMMARY_LENGTH = 700;
+const MAX_PLOT_LENGTH = 450;
+const MAX_SEARCH_RESULTS = 5;
 
 /** Cuts [text] at the last full sentence that fits in [max], so a long summary doesn't end mid-word. */
 function truncateAtSentence(text: string, max: number): string {
@@ -153,7 +165,7 @@ function truncateAtSentence(text: string, max: number): string {
   return lastStop > 0 ? cut.slice(0, lastStop + 1) : truncate(text, max);
 }
 
-/** The opening paragraph of an English Wikipedia article, e.g. the premise and cast of a film. */
+/** The opening paragraph of an English Wikipedia article - for a film, its genre, director and cast. */
 async function wikipediaSummary(articleTitle: string): Promise<string | null> {
   const summary = await fetchJson<{ extract?: string }>(
     `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(articleTitle.replace(/ /g, '_'))}`,
@@ -162,66 +174,142 @@ async function wikipediaSummary(articleTitle: string): Promise<string | null> {
   return extract ? truncateAtSentence(extract, MAX_SUMMARY_LENGTH) : null;
 }
 
+// Plain-text article headings look like "== Plot ==" ("=== ... ===" is a subsection).
+const PLOT_HEADING = /^==\s*(?:plot|plot summary|synopsis|premise|story)\s*==\s*$/im;
+
+/**
+ * The first few sentences of a film article's Plot section: who the characters are and the setup,
+ * cut short to stay clear of spoilers. Null when the article has no such section.
+ */
+async function wikipediaPlotOpening(articleTitle: string): Promise<string | null> {
+  const res = await fetchJson<{ query?: { pages?: Record<string, { extract?: string }> } }>(
+    `${WIKIPEDIA_API}?action=query&prop=extracts&explaintext=1&redirects=1&titles=${encodeURIComponent(articleTitle)}&format=json`,
+  );
+  const text = Object.values(res?.query?.pages ?? {})[0]?.extract;
+  const heading = text?.match(PLOT_HEADING);
+  if (!text || !heading || heading.index === undefined) return null;
+  const paragraph = text
+    .slice(heading.index + heading[0].length)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && !line.startsWith('='));
+  const cleaned = clean(paragraph);
+  return cleaned ? truncateAtSentence(cleaned, MAX_PLOT_LENGTH) : null;
+}
+
+// Wikidata keeps many names under the language-neutral "mul" label instead of "en" (Toy Story has no "en").
+type WikidataLabels = { en?: { value: string }; mul?: { value: string } };
+
+function wikidataLabel(labels: WikidataLabels | undefined): string | null {
+  return clean(labels?.en?.value) ?? clean(labels?.mul?.value);
+}
+
+type WikidataFilm = {
+  labels?: WikidataLabels;
+  descriptions?: { en?: { value: string } };
+  sitelinks?: { enwiki?: { title: string } };
+  claims?: {
+    P136?: { mainsnak?: { datavalue?: { value?: { id?: string } } } }[];
+    P345?: { mainsnak?: { datavalue?: { value?: unknown } } }[];
+  };
+};
+
+/**
+ * Everything the Stash form fills in for a film, from its Wikidata item (e.g. Q25188 = Inception):
+ * "Inception (2010)", the opening of its Wikipedia plot, up to three genres, and its IMDb link
+ * (empty when Wikidata has none). Wikidata and Wikipedia need no API key.
+ */
+export async function filmPreview(entityId: string): Promise<LinkPreview | null> {
+  if (!/^Q\d+$/.test(entityId)) return null;
+  const entities = await fetchJson<{ entities?: Record<string, WikidataFilm> }>(
+    `${WIKIDATA_API}?action=wbgetentities&ids=${entityId}&props=labels|descriptions|sitelinks|claims&languages=en|mul&sitefilter=enwiki&format=json`,
+  );
+  const entity = entities?.entities?.[entityId];
+  const articleTitle = entity?.sitelinks?.enwiki?.title;
+  // Last resort for the name: the Wikipedia article's title, minus "(2013 film)"-style disambiguation.
+  const label = wikidataLabel(entity?.labels) ?? clean(articleTitle?.replace(/\s*\([^)]*\)$/, ''));
+  if (!entity || !label) return null;
+  const tagline = clean(entity.descriptions?.en?.value);
+  const imdbId = (entity.claims?.P345 ?? [])
+    .map((claim) => claim.mainsnak?.datavalue?.value)
+    .find((value): value is string => typeof value === 'string' && /^tt\d+$/.test(value));
+  // Genre (P136) values are entity ids like Q2484376; their names need one more lookup.
+  const genreIds = (entity.claims?.P136 ?? [])
+    .map((claim) => claim.mainsnak?.datavalue?.value?.id)
+    .filter((id): id is string => !!id && /^Q\d+$/.test(id))
+    .slice(0, MAX_GENRES);
+  const [plot, genres] = await Promise.all([
+    articleTitle ? wikipediaPlotOpening(articleTitle) : Promise.resolve(null),
+    wikidataLabels(genreIds),
+  ]);
+  // No Plot section -> the article's opening paragraph; no article at all -> the short tagline.
+  const summary = plot ?? (articleTitle ? await wikipediaSummary(articleTitle) : null);
+  // "Title (year)" when the tagline leads with the year.
+  const year = tagline?.match(/^(\d{4})\b/)?.[1];
+  return {
+    url: imdbId ? `https://www.imdb.com/title/${imdbId}/` : '',
+    title: year ? `${label} (${year})` : label,
+    description: summary ?? (tagline ? tagline.charAt(0).toUpperCase() + tagline.slice(1) : null),
+    genres: toGenreTags(genres),
+    suggestedType: 'movie',
+  };
+}
+
 /**
  * IMDb answers every non-browser fetch with a bot challenge (HTTP 202), so its pages can't be
- * read. Wikidata indexes films by IMDb id (property P345) and needs no API key, so look the title
- * up there instead: "Inception" + "2010 film directed by Christopher Nolan", then add the opening
- * paragraph of the film's English Wikipedia article as a short summary.
+ * read. Wikidata indexes films by IMDb id (property P345), so find the film's item there instead.
  */
-async function imdbPreviewFromWikidata(
-  imdbId: string,
-): Promise<{ title: string; description: string | null; genres: string[] } | null> {
+async function imdbPreviewFromWikidata(imdbId: string): Promise<LinkPreview | null> {
   const search = await fetchJson<{ query?: { search?: { title: string }[] } }>(
     `${WIKIDATA_API}?action=query&list=search&srsearch=haswbstatement:P345=${imdbId}&srlimit=1&format=json`,
   );
   const entityId = search?.query?.search?.[0]?.title;
-  if (!entityId || !/^Q\d+$/.test(entityId)) return null;
+  return entityId ? filmPreview(entityId) : null;
+}
 
-  const entities = await fetchJson<{
-    entities?: Record<
-      string,
-      {
-        labels?: { en?: { value: string } };
-        descriptions?: { en?: { value: string } };
-        sitelinks?: { enwiki?: { title: string } };
-        claims?: { P136?: { mainsnak?: { datavalue?: { value?: { id?: string } } } }[] };
-      }
-    >;
+export type MovieSearchResult = {
+  /** Wikidata item id, passed back to [filmPreview] once one is picked. */
+  id: string;
+  title: string;
+  /** Wikipedia's short description, e.g. "2013 Indian film by Jeethu Joseph" - tells same-named films apart. */
+  description: string;
+};
+
+// Film articles' short descriptions lead with the year ("1995 film by John Lasseter"); people
+// ("Malayalam film director") and extras ("Music of the 2001 feature film") don't.
+const FILM_DESCRIPTION = /^\d{4}\b[^.]*\bfilm\b/i;
+const NOT_A_FILM = /\b(soundtrack|series|video game|franchise)\b/i;
+
+/**
+ * Films matching a typed name, best match first, using Wikipedia's search (it ranks the well-known
+ * film above remakes and namesakes). Null when the search itself fails.
+ */
+export async function searchMovies(query: string): Promise<MovieSearchResult[] | null> {
+  const res = await fetchJson<{
+    query?: { pages?: Record<string, { title: string; index: number; description?: string; pageprops?: { wikibase_item?: string } }> };
   }>(
-    `${WIKIDATA_API}?action=wbgetentities&ids=${entityId}&props=labels|descriptions|sitelinks|claims&languages=en&sitefilter=enwiki&format=json`,
+    `${WIKIPEDIA_API}?action=query&generator=search&gsrsearch=${encodeURIComponent(`${query} film`)}&gsrlimit=15&prop=description|pageprops&ppprop=wikibase_item&format=json`,
   );
-  const entity = entities?.entities?.[entityId];
-  const label = clean(entity?.labels?.en?.value);
-  if (!label) return null;
-  const tagline = clean(entity?.descriptions?.en?.value);
-  const articleTitle = entity?.sitelinks?.enwiki?.title;
-  // Genre (P136) values are entity ids like Q2484376; their names need one more lookup.
-  const genreIds = (entity?.claims?.P136 ?? [])
-    .map((claim) => claim.mainsnak?.datavalue?.value?.id)
-    .filter((id): id is string => !!id && /^Q\d+$/.test(id))
-    .slice(0, MAX_GENRES);
-  const [summary, genres] = await Promise.all([
-    articleTitle ? wikipediaSummary(articleTitle) : Promise.resolve(null),
-    wikidataLabels(genreIds),
-  ]);
-  // "Title (year)" when the tagline leads with the year.
-  const year = tagline?.match(/^(\d{4})\b/)?.[1];
-  // The summary paragraph on its own; the short tagline only when there's no article.
-  const description = summary ?? (tagline ? tagline.charAt(0).toUpperCase() + tagline.slice(1) : null);
-  return {
-    title: year ? `${label} (${year})` : label,
-    description,
-    genres: toGenreTags(genres),
-  };
+  if (!res) return null;
+  return Object.values(res.query?.pages ?? {})
+    .sort((a, b) => a.index - b.index)
+    .flatMap((page) => {
+      const id = page.pageprops?.wikibase_item;
+      const description = clean(page.description);
+      if (!id || !description || !FILM_DESCRIPTION.test(description) || NOT_A_FILM.test(description)) return [];
+      // "Drishyam 2 (2022 film)" -> "Drishyam 2"; the description already carries the year.
+      return [{ id, title: page.title.replace(/\s*\([^)]*\bfilm\)$/i, ''), description }];
+    })
+    .slice(0, MAX_SEARCH_RESULTS);
 }
 
 /** English names for Wikidata ids, in the same order; ids without a name are dropped. */
 async function wikidataLabels(ids: string[]): Promise<string[]> {
   if (ids.length === 0) return [];
-  const res = await fetchJson<{ entities?: Record<string, { labels?: { en?: { value: string } } }> }>(
-    `${WIKIDATA_API}?action=wbgetentities&ids=${ids.join('|')}&props=labels&languages=en&format=json`,
+  const res = await fetchJson<{ entities?: Record<string, { labels?: WikidataLabels }> }>(
+    `${WIKIDATA_API}?action=wbgetentities&ids=${ids.join('|')}&props=labels&languages=en|mul&format=json`,
   );
-  return ids.map((id) => res?.entities?.[id]?.labels?.en?.value).filter((name): name is string => !!name);
+  return ids.map((id) => wikidataLabel(res?.entities?.[id]?.labels)).filter((name): name is string => !!name);
 }
 
 function truncate(text: string, max: number): string {
@@ -232,8 +320,9 @@ function truncate(text: string, max: number): string {
 export async function fetchLinkPreview(input: URL): Promise<LinkPreview | null> {
   const imdbId = imdbIdFromUrl(input);
   if (imdbId) {
-    const fromWikidata = await imdbPreviewFromWikidata(imdbId);
-    return fromWikidata ? { url: input.toString(), ...fromWikidata, suggestedType: 'movie' } : null;
+    const film = await imdbPreviewFromWikidata(imdbId);
+    // Keep the link as pasted.
+    return film ? { ...film, url: input.toString() } : null;
   }
   if (!isMapsUrl(input)) return null;
 

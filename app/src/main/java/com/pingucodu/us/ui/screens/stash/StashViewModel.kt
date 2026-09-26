@@ -16,12 +16,14 @@ import com.pingucodu.us.data.money.UpdateMemoryResult
 import com.pingucodu.us.data.network.HangoutDto
 import com.pingucodu.us.data.network.HangoutMemoryDto
 import com.pingucodu.us.data.network.LinkPreviewDto
+import com.pingucodu.us.data.network.MovieSearchResultDto
 import com.pingucodu.us.data.network.SpecialDateRequest
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import com.pingucodu.us.data.stash.AddStashItemResult
 import com.pingucodu.us.data.stash.DeleteStashItemResult
 import com.pingucodu.us.data.stash.LinkPreviewResult
+import com.pingucodu.us.data.stash.MovieSearchResult
 import com.pingucodu.us.data.stash.StashItemsResult
 import com.pingucodu.us.data.stash.StashRepository
 import com.pingucodu.us.data.stash.StashTagsResult
@@ -77,6 +79,10 @@ data class StashUiState(
     val linkPreview: LinkPreviewDto? = null,
     val isFetchingPreview: Boolean = false,
     val previewError: String? = null,
+    /** Films matching the typed movie name; null = no search shown. */
+    val movieResults: List<MovieSearchResultDto>? = null,
+    val isSearchingMovies: Boolean = false,
+    val movieSearchError: String? = null,
 
     val hangouts: List<HangoutDto> = emptyList(),
     val hangoutsLoaded: Boolean = false,
@@ -266,6 +272,9 @@ class StashViewModel @Inject constructor(
         linkPreview = null,
         isFetchingPreview = false,
         previewError = null,
+        movieResults = null,
+        isSearchingMovies = false,
+        movieSearchError = null,
     )
 
     private var previewJob: Job? = null
@@ -283,6 +292,46 @@ class StashViewModel @Inject constructor(
                     _uiState.update { it.copy(isFetchingPreview = false, previewError = result.message) }
             }
         }
+    }
+
+    private var movieSearchJob: Job? = null
+
+    /** Looks up films by the name typed in the title field, for the user to pick one. */
+    fun searchMovies(query: String) {
+        movieSearchJob?.cancel()
+        movieSearchJob = viewModelScope.launch {
+            _uiState.update { it.copy(isSearchingMovies = true, movieSearchError = null, movieResults = null) }
+            when (val result = stashRepository.searchMovies(query.trim())) {
+                is MovieSearchResult.Success ->
+                    _uiState.update { it.copy(isSearchingMovies = false, movieResults = result.movies) }
+                is MovieSearchResult.Failed ->
+                    _uiState.update { it.copy(isSearchingMovies = false, movieSearchError = result.message) }
+            }
+        }
+    }
+
+    /** Fills the form from a picked film, exactly like fetching its IMDb link would. */
+    fun pickMovie(movie: MovieSearchResultDto) {
+        movieSearchJob?.cancel()
+        previewJob?.cancel()
+        previewJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(movieResults = null, isSearchingMovies = false, movieSearchError = null, isFetchingPreview = true, previewError = null)
+            }
+            when (val result = stashRepository.getMoviePreview(movie.id)) {
+                is LinkPreviewResult.Success ->
+                    _uiState.update { it.copy(isFetchingPreview = false, linkPreview = result.preview) }
+                is LinkPreviewResult.Unreadable ->
+                    _uiState.update { it.copy(isFetchingPreview = false, previewError = result.message) }
+                is LinkPreviewResult.NetworkError ->
+                    _uiState.update { it.copy(isFetchingPreview = false, previewError = result.message) }
+            }
+        }
+    }
+
+    fun clearMovieResults() {
+        movieSearchJob?.cancel()
+        _uiState.update { it.copy(movieResults = null, isSearchingMovies = false, movieSearchError = null) }
     }
 
     private fun isMapsLink(url: String): Boolean {
