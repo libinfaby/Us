@@ -3,6 +3,7 @@ package com.pingucodu.us.data.stash
 import com.pingucodu.us.data.local.TokenStore
 import com.pingucodu.us.data.network.ApiService
 import com.pingucodu.us.data.network.ErrorResponse
+import com.pingucodu.us.data.network.LinkPreviewDto
 import com.pingucodu.us.data.network.toUserMessage
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
@@ -44,6 +45,13 @@ sealed interface ToggleStashItemResult {
 sealed interface DeleteStashItemResult {
     data object Success : DeleteStashItemResult
     data class NetworkError(val message: String) : DeleteStashItemResult
+}
+
+sealed interface LinkPreviewResult {
+    data class Success(val preview: LinkPreviewDto) : LinkPreviewResult
+    /** The link was fine but had nothing readable - the user can still fill it in by hand. */
+    data class Unreadable(val message: String) : LinkPreviewResult
+    data class NetworkError(val message: String) : LinkPreviewResult
 }
 
 @Singleton
@@ -152,6 +160,21 @@ class StashRepository @Inject constructor(
             DeleteStashItemResult.Success
         } else {
             DeleteStashItemResult.NetworkError(errorMessage(response))
+        }
+    }
+
+    suspend fun getLinkPreview(url: String): LinkPreviewResult {
+        val token = bearerToken() ?: return LinkPreviewResult.NetworkError("not logged in")
+        val response = try {
+            api.getLinkPreview(token, url)
+        } catch (e: IOException) {
+            return LinkPreviewResult.NetworkError(e.toUserMessage())
+        }
+        val body = response.body()
+        return when {
+            response.isSuccessful && body != null -> LinkPreviewResult.Success(body)
+            response.code() == 400 || response.code() == 422 -> LinkPreviewResult.Unreadable(errorMessage(response))
+            else -> LinkPreviewResult.NetworkError(errorMessage(response))
         }
     }
 }

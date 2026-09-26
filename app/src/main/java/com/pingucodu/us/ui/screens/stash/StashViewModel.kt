@@ -13,10 +13,12 @@ import com.pingucodu.us.data.money.UpdateHangoutResult
 import com.pingucodu.us.data.money.UpdateMemoryResult
 import com.pingucodu.us.data.network.HangoutDto
 import com.pingucodu.us.data.network.HangoutMemoryDto
+import com.pingucodu.us.data.network.LinkPreviewDto
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import com.pingucodu.us.data.stash.AddStashItemResult
 import com.pingucodu.us.data.stash.DeleteStashItemResult
+import com.pingucodu.us.data.stash.LinkPreviewResult
 import com.pingucodu.us.data.stash.StashItemsResult
 import com.pingucodu.us.data.stash.StashRepository
 import com.pingucodu.us.data.stash.StashTagsResult
@@ -41,6 +43,9 @@ val STASH_TYPES = listOf(
     StashTypeSpec("todo", "to-do"),
 )
 
+/** Stash types that can carry a link with a fetched title + description. */
+val LINK_PREVIEW_TYPES = setOf("movie", "place")
+
 const val HANGOUTS_CATEGORY = "hangouts"
 const val ALL_CATEGORY = "all"
 private const val PAGE_SIZE = 10
@@ -61,6 +66,13 @@ data class StashUiState(
     val editingItem: StashItemDto? = null,
     val dialogError: String? = null,
     val isSubmitting: Boolean = false,
+    /** A link shared into the app - the add sheet opens with it and this type preselected. */
+    val prefillUrl: String? = null,
+    val prefillType: String? = null,
+    /** The latest fetched preview; the open form applies it to its fields once. */
+    val linkPreview: LinkPreviewDto? = null,
+    val isFetchingPreview: Boolean = false,
+    val previewError: String? = null,
 
     val hangouts: List<HangoutDto> = emptyList(),
     val hangoutsLoaded: Boolean = false,
@@ -221,15 +233,56 @@ class StashViewModel @Inject constructor(
     }
 
     fun openAddDialog() {
-        _uiState.update { it.copy(showAddDialog = true, editingItem = null, dialogError = null) }
+        _uiState.update { it.withFreshDialog().copy(showAddDialog = true) }
     }
 
     fun openEditDialog(item: StashItemDto) {
-        _uiState.update { it.copy(showAddDialog = true, editingItem = item, dialogError = null) }
+        _uiState.update { it.withFreshDialog().copy(showAddDialog = true, editingItem = item) }
+    }
+
+    /** A link shared from another app: guess movie vs place from the host, open the add sheet
+     * with the link filled in, and start fetching its title + description straight away. */
+    fun openAddDialogFromShare(url: String) {
+        val type = if (isMapsLink(url)) "place" else "movie"
+        _uiState.update { it.withFreshDialog().copy(showAddDialog = true, prefillUrl = url, prefillType = type) }
+        fetchPreview(url)
     }
 
     fun dismissDialog() {
-        _uiState.update { it.copy(showAddDialog = false, editingItem = null, dialogError = null) }
+        _uiState.update { it.withFreshDialog() }
+    }
+
+    private fun StashUiState.withFreshDialog() = copy(
+        showAddDialog = false,
+        editingItem = null,
+        dialogError = null,
+        prefillUrl = null,
+        prefillType = null,
+        linkPreview = null,
+        isFetchingPreview = false,
+        previewError = null,
+    )
+
+    private var previewJob: Job? = null
+
+    fun fetchPreview(url: String) {
+        previewJob?.cancel()
+        previewJob = viewModelScope.launch {
+            _uiState.update { it.copy(isFetchingPreview = true, previewError = null) }
+            when (val result = stashRepository.getLinkPreview(url)) {
+                is LinkPreviewResult.Success ->
+                    _uiState.update { it.copy(isFetchingPreview = false, linkPreview = result.preview) }
+                is LinkPreviewResult.Unreadable ->
+                    _uiState.update { it.copy(isFetchingPreview = false, previewError = result.message) }
+                is LinkPreviewResult.NetworkError ->
+                    _uiState.update { it.copy(isFetchingPreview = false, previewError = result.message) }
+            }
+        }
+    }
+
+    private fun isMapsLink(url: String): Boolean {
+        val lower = url.lowercase()
+        return "maps.app.goo.gl" in lower || "goo.gl/maps" in lower || "maps.google." in lower || "google.com/maps" in lower
     }
 
     fun submitItem(request: StashItemRequest) {

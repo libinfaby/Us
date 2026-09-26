@@ -26,6 +26,14 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- "Share to Us" from IMDb, Letterboxd, Maps etc. - opens Stash's add sheet with the link. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <!-- While the app is in the background (e.g. phone locked), FCM draws the notification

@@ -73,6 +73,7 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,6 +84,7 @@ import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.HangoutDto
 import com.pingucodu.us.data.network.HangoutMemoryDto
+import com.pingucodu.us.data.network.LinkPreviewDto
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import com.pingucodu.us.ui.components.DateField
@@ -125,9 +127,22 @@ private val SQLITE_DATETIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 private val HANGOUT_PALETTE = listOf(Pink, Teal, YellowSoft)
 private const val LOAD_MORE_THRESHOLD = 3
 
+/** [sharedUrl] is a link shared into the app from another app; it opens the add sheet once and
+ * is then cleared through [onSharedUrlConsumed]. */
 @Composable
-fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltViewModel()) {
+fun StashScreen(
+    modifier: Modifier = Modifier,
+    sharedUrl: String? = null,
+    onSharedUrlConsumed: () -> Unit = {},
+    viewModel: StashViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.uiState.collectAsState()
+    LaunchedEffect(sharedUrl) {
+        if (sharedUrl != null) {
+            viewModel.openAddDialogFromShare(sharedUrl)
+            onSharedUrlConsumed()
+        }
+    }
     var itemToDelete by remember { mutableStateOf<StashItemDto?>(null) }
     var hangoutToDelete by remember { mutableStateOf<HangoutDto?>(null) }
     var memoryToDelete by remember { mutableStateOf<Pair<HangoutDto, HangoutMemoryDto>?>(null) }
@@ -212,10 +227,15 @@ fun StashScreen(modifier: Modifier = Modifier, viewModel: StashViewModel = hiltV
     if (uiState.showAddDialog) {
         StashItemFormDialog(
             item = uiState.editingItem,
-            defaultType = uiState.typeFilter,
+            defaultType = uiState.prefillType ?: uiState.typeFilter,
+            prefillUrl = uiState.prefillUrl,
             tagsByType = uiState.tagsByType,
             dialogError = uiState.dialogError,
             isSubmitting = uiState.isSubmitting,
+            linkPreview = uiState.linkPreview,
+            isFetchingPreview = uiState.isFetchingPreview,
+            previewError = uiState.previewError,
+            onFetchPreview = { viewModel.fetchPreview(normalizeUrl(it)) },
             onDismiss = viewModel::dismissDialog,
             onSubmit = viewModel::submitItem,
             onRenameTag = viewModel::renameTag,
@@ -580,6 +600,12 @@ private fun StashItemCard(
                     onClick = onToggle,
                 )
             }
+            if (item.url != null) {
+                val uriHandler = LocalUriHandler.current
+                PillActionButton(label = "link ↗", background = YellowSoft, contentColor = Ink, onClick = {
+                    runCatching { uriHandler.openUri(item.url) }
+                })
+            }
             PillActionButton(label = "edit", background = Color.White, contentColor = Ink, onClick = onEdit)
             PillActionButton(label = "delete", background = Color.White, contentColor = Ink, onClick = onDelete)
         }
@@ -832,6 +858,26 @@ private fun AddMemoryButton(onClick: () -> Unit) {
 
 
 @Composable
+private fun FetchLinkChip(enabled: Boolean, isFetching: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier = Modifier
+            .hardShadow(shape, offsetX = 3.dp, offsetY = 3.dp)
+            .border(3.dp, Ink, shape)
+            .background(if (enabled) YellowSoft else Color.White, shape)
+            .clickableNoRipple(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            if (isFetching) "…" else "fetch",
+            style = MaterialTheme.typography.labelLarge,
+            color = if (enabled || isFetching) Ink else Ink.copy(alpha = 0.35f),
+        )
+    }
+}
+
+@Composable
 private fun FindOnMapsChip(enabled: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     Box(
@@ -867,9 +913,14 @@ private fun SuggestedTagChip(tag: String, selected: Boolean, onClick: () -> Unit
 private fun StashItemFormDialog(
     item: StashItemDto?,
     defaultType: String?,
+    prefillUrl: String?,
     tagsByType: Map<String, List<String>>,
     dialogError: String?,
     isSubmitting: Boolean,
+    linkPreview: LinkPreviewDto?,
+    isFetchingPreview: Boolean,
+    previewError: String?,
+    onFetchPreview: (String) -> Unit,
     onDismiss: () -> Unit,
     onSubmit: (StashItemRequest) -> Unit,
     onRenameTag: (type: String, oldTag: String, newTag: String) -> Unit,
@@ -878,6 +929,10 @@ private fun StashItemFormDialog(
     var type by remember { mutableStateOf(item?.type ?: defaultType ?: STASH_TYPES.first().value) }
     var title by remember { mutableStateOf(item?.title ?: "") }
     var body by remember { mutableStateOf(item?.body ?: "") }
+    var url by remember { mutableStateOf(item?.url ?: prefillUrl ?: "") }
+    // A fetched preview only overwrites fields the user hasn't typed into themselves.
+    var titleTyped by remember { mutableStateOf(false) }
+    var bodyTyped by remember { mutableStateOf(false) }
     var tags by remember { mutableStateOf(item?.tags?.toSet() ?: emptySet()) }
     var tagInput by remember { mutableStateOf("") }
     var tagToManage by remember { mutableStateOf<String?>(null) }
@@ -899,6 +954,15 @@ private fun StashItemFormDialog(
     val suggestedTags = tagsByType[type].orEmpty()
     val visibleTags = (suggestedTags + tags).distinct()
     val uriHandler = LocalUriHandler.current
+    val supportsLink = type in LINK_PREVIEW_TYPES
+
+    LaunchedEffect(linkPreview) {
+        val preview = linkPreview ?: return@LaunchedEffect
+        if (!titleTyped || title.isBlank()) title = preview.title
+        if ((!bodyTyped || body.isBlank()) && preview.description != null) body = preview.description
+        if (type !in LINK_PREVIEW_TYPES) type = preview.suggestedType
+        url = preview.url
+    }
 
     NeoBottomSheet(title = if (item == null) "share something" else "edit item", onDismiss = onDismiss) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -908,9 +972,38 @@ private fun StashItemFormDialog(
         }
         Spacer(Modifier.height(16.dp))
 
+        if (supportsLink) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                NeoField(
+                    value = url,
+                    onValueChange = { url = it },
+                    placeholder = if (type == "place") "paste a google maps link" else "paste an imdb / letterboxd link",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { if (url.isNotBlank()) onFetchPreview(url) }),
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(10.dp))
+                FetchLinkChip(
+                    enabled = url.isNotBlank() && !isFetchingPreview,
+                    isFetching = isFetchingPreview,
+                    onClick = { onFetchPreview(url) },
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                previewError ?: "optional - we'll fill in the title and description for you",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (previewError != null) Coral else DescriptionGrey,
+            )
+            Spacer(Modifier.height(14.dp))
+        }
+
         NeoField(
             value = title,
-            onValueChange = { title = it },
+            onValueChange = {
+                title = it
+                titleTyped = true
+            },
             placeholder = titlePlaceholder(type),
             modifier = Modifier.fillMaxWidth(),
         )
@@ -925,7 +1018,10 @@ private fun StashItemFormDialog(
 
         NeoField(
             value = body,
-            onValueChange = { body = it },
+            onValueChange = {
+                body = it
+                bodyTyped = true
+            },
             placeholder = bodyPlaceholder(type),
             minLines = 3,
             modifier = Modifier.fillMaxWidth(),
@@ -966,7 +1062,16 @@ private fun StashItemFormDialog(
         }
 
         SubmitButton(label = if (item == null) "drop it in" else "save changes", enabled = isValid && !isSubmitting) {
-            onSubmit(StashItemRequest(type = type, title = title.trim(), body = body.ifBlank { null }, tags = finalTags()))
+            onSubmit(
+                StashItemRequest(
+                    type = type,
+                    title = title.trim(),
+                    body = body.ifBlank { null },
+                    // "" clears a link on edit; types without links just leave it out.
+                    url = if (supportsLink) url.trim().takeIf { it.isNotEmpty() }?.let(::normalizeUrl) ?: "" else null,
+                    tags = finalTags(),
+                ),
+            )
         }
     }
 

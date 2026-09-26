@@ -32,7 +32,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -69,6 +71,8 @@ import java.util.Locale
 fun PinguCoduApp(
     pendingRoute: String? = null,
     onPendingRouteConsumed: () -> Unit = {},
+    pendingShareUrl: String? = null,
+    onPendingShareUrlConsumed: () -> Unit = {},
     authViewModel: AuthViewModel = hiltViewModel(),
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = PinkTint) {
@@ -82,6 +86,8 @@ fun PinguCoduApp(
                 onLogout = authViewModel::logout,
                 pendingRoute = pendingRoute,
                 onPendingRouteConsumed = onPendingRouteConsumed,
+                pendingShareUrl = pendingShareUrl,
+                onPendingShareUrlConsumed = onPendingShareUrlConsumed,
             )
         }
     }
@@ -94,8 +100,12 @@ private fun MainScreen(
     onLogout: () -> Unit,
     pendingRoute: String?,
     onPendingRouteConsumed: () -> Unit,
+    pendingShareUrl: String?,
+    onPendingShareUrlConsumed: () -> Unit,
 ) {
     val navController = rememberNavController()
+    // One-shot hand-off into Stash: consumed by the screen once it has acted on it.
+    var stashSharedUrl by remember { mutableStateOf<String?>(null) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val isTabRoute = Tab.entries.any { it.route == currentRoute }
@@ -118,6 +128,15 @@ private fun MainScreen(
             else -> return@LaunchedEffect
         }
         onPendingRouteConsumed()
+    }
+
+    // A link shared into the app from IMDb/Letterboxd/Maps: open Stash's add sheet with it.
+    LaunchedEffect(pendingShareUrl) {
+        if (pendingShareUrl != null) {
+            stashSharedUrl = pendingShareUrl
+            navigateToTab(Tab.Stash)
+            onPendingShareUrlConsumed()
+        }
     }
 
     Scaffold(
@@ -151,7 +170,9 @@ private fun MainScreen(
                 }
                 composable(Tab.Money.route) { MoneyScreen() }
                 composable(Tab.Cycle.route) { CycleScreen() }
-                composable(Tab.Stash.route) { StashScreen() }
+                composable(Tab.Stash.route) {
+                    StashScreen(sharedUrl = stashSharedUrl, onSharedUrlConsumed = { stashSharedUrl = null })
+                }
                 composable(SETTINGS_ROUTE) {
                     SettingsScreen(onBack = { navController.popBackStack() })
                 }

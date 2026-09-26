@@ -182,6 +182,12 @@ interface ApiService {
         @Body request: RegisterDeviceTokenRequest,
     ): Response<Unit>
 
+    @GET("stash/preview")
+    suspend fun getLinkPreview(
+        @Header("Authorization") bearerToken: String,
+        @Query("url") url: String,
+    ): Response<LinkPreviewDto>
+
     @POST("nudges")
     suspend fun sendNudge(
         @Header("Authorization") bearerToken: String,

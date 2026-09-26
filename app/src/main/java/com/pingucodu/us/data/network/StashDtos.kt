@@ -9,6 +9,7 @@ data class StashItemDto(
     val author: String,
     val title: String,
     val body: String?,
+    val url: String? = null,
     val tags: List<String>,
     val status: String,
     val createdAt: String,
@@ -25,6 +26,17 @@ data class StashItemRequest(
     val type: String? = null,
     val title: String? = null,
     val body: String? = null,
+    /** Movies and places only; "" clears it on PATCH (null is simply left out of the JSON). */
+    val url: String? = null,
     val tags: List<String>? = null,
     val status: String? = null,
+)
+
+/** Text-only preview of a movie/place link: `GET /stash/preview`. */
+@Serializable
+data class LinkPreviewDto(
+    val url: String,
+    val title: String,
+    val description: String? = null,
+    val suggestedType: String,
 )

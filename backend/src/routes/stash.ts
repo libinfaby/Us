@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { requireAuth, type AuthVariables } from '../middleware/auth';
 import { notifyPartner } from '../lib/notify';
+import { fetchLinkPreview, parseHttpUrl } from '../lib/linkPreview';
 
 export const stashRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -33,6 +34,7 @@ type StashRow = {
   author: string;
   title: string;
   body: string | null;
+  url: string | null;
   tags_json: string;
   status: StashStatus;
   created_at: string;
@@ -46,12 +48,22 @@ function toItemJson(row: StashRow) {
     author: row.author,
     title: row.title,
     body: row.body,
+    url: row.url,
     tags: JSON.parse(row.tags_json) as string[],
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
+
+/** Only movies and places keep a link; returns undefined for "not a valid link". */
+function normalizeUrl(value: unknown): string | null | undefined {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') return undefined;
+  return parseHttpUrl(value)?.toString();
+}
+
+const URL_TYPES: readonly StashType[] = ['movie', 'place'];
 
 function parseNonNegativeInt(value: string | undefined): number | null | undefined {
   if (value === undefined) return undefined;
@@ -116,9 +128,18 @@ stashRoutes.get('/tags', async (c) => {
   return c.json(results.map((r) => ({ type: r.type, tag: r.tag })));
 });
 
+/** Text-only preview (title + description) for a movie/place link - see lib/linkPreview.ts. */
+stashRoutes.get('/preview', async (c) => {
+  const url = parseHttpUrl(c.req.query('url') ?? '');
+  if (!url) return c.json({ error: 'url must be an http(s) link' }, 400);
+  const preview = await fetchLinkPreview(url);
+  if (!preview) return c.json({ error: "couldn't read that link - fill it in by hand" }, 422);
+  return c.json(preview);
+});
+
 stashRoutes.post('/', async (c) => {
   const body = await c.req.json().catch(() => null);
-  const { type, title, body: itemBody, tags } = body ?? {};
+  const { type, title, body: itemBody, tags, url: rawUrl } = body ?? {};
 
   if (!isType(type) || typeof title !== 'string' || title.trim().length === 0) {
     return c.json({ error: 'type (movie/link/place/note/todo) and title are required' }, 400);
@@ -127,11 +148,22 @@ stashRoutes.post('/', async (c) => {
     return c.json({ error: 'tags must be an array of strings' }, 400);
   }
 
+  const url = normalizeUrl(rawUrl);
+  if (url === undefined) return c.json({ error: 'url must be an http(s) link' }, 400);
+
   const id = crypto.randomUUID();
   await c.env.DB.prepare(
-    `INSERT INTO stash_items (id, type, author, title, body, tags_json) VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO stash_items (id, type, author, title, body, url, tags_json) VALUES (?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, type, c.var.username, title.trim(), typeof itemBody === 'string' ? itemBody : null, JSON.stringify(tags ?? []))
+    .bind(
+      id,
+      type,
+      c.var.username,
+      title.trim(),
+      typeof itemBody === 'string' ? itemBody : null,
+      URL_TYPES.includes(type) ? url : null,
+      JSON.stringify(tags ?? []),
+    )
     .run();
 
   const row = await c.env.DB.prepare('SELECT * FROM stash_items WHERE id = ?').bind(id).first<StashRow>();
@@ -163,6 +195,8 @@ stashRoutes.patch('/:id', async (c) => {
   if (!isStatus(status)) return c.json({ error: 'invalid status' }, 400);
 
   const itemBody = body.body !== undefined ? body.body : existing.body;
+  const url = body.url !== undefined ? normalizeUrl(body.url) : existing.url;
+  if (url === undefined) return c.json({ error: 'url must be an http(s) link' }, 400);
   let tagsJson = existing.tags_json;
   if (body.tags !== undefined) {
     if (!Array.isArray(body.tags) || !body.tags.every((t: unknown) => typeof t === 'string')) {
@@ -172,10 +206,10 @@ stashRoutes.patch('/:id', async (c) => {
   }
 
   await c.env.DB.prepare(
-    `UPDATE stash_items SET type = ?, title = ?, body = ?, tags_json = ?, status = ?, updated_at = datetime('now')
+    `UPDATE stash_items SET type = ?, title = ?, body = ?, url = ?, tags_json = ?, status = ?, updated_at = datetime('now')
      WHERE id = ?`,
   )
-    .bind(type, title, typeof itemBody === 'string' ? itemBody : null, tagsJson, status, id)
+    .bind(type, title, typeof itemBody === 'string' ? itemBody : null, URL_TYPES.includes(type) ? url : null, tagsJson, status, id)
     .run();
 
   const row = await c.env.DB.prepare('SELECT * FROM stash_items WHERE id = ?').bind(id).first<StashRow>();
