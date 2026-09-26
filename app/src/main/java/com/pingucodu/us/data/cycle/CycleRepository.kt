@@ -103,7 +103,7 @@ class CycleRepository @Inject constructor(
 
     suspend fun addLog(
         logDate: String,
-        flow: String,
+        flow: String?,
         note: String?,
         tags: List<String> = emptyList(),
         partnerNote: String? = null,

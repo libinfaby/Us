@@ -222,6 +222,7 @@ fun CycleScreen(modifier: Modifier = Modifier, viewModel: CycleViewModel = hiltV
         AddLogDialog(
             date = selectedDate.toString(),
             existingLog = uiState.logs.firstOrNull { it.logDate == selectedDate.toString() },
+            previousDayFlow = uiState.logs.firstOrNull { it.logDate == selectedDate.minusDays(1).toString() }?.flow,
             dialogError = uiState.dialogError,
             isSubmitting = uiState.isSubmitting,
             onDismiss = viewModel::dismissDialog,
@@ -233,7 +234,7 @@ fun CycleScreen(modifier: Modifier = Modifier, viewModel: CycleViewModel = hiltV
         val target = logToDelete!!
         NeoConfirmDialog(
             title = "delete this?",
-            message = "the entry for ${formatShortDate(target.logDate)} goes away for good, flow, tags, and notes included.",
+            message = "the entry for ${formatShortDate(target.logDate)} goes away for good, ${if (target.flow != null) "flow, " else ""}tags, and notes included.",
             confirmLabel = "delete",
             badgeLabel = "no undo",
             accentColor = Pink,
@@ -376,8 +377,9 @@ private fun CalendarCard(
         }
 
         Spacer(Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             LegendSwatch(Teal, "logged flow")
+            LegendSwatch(PinkTint, "logged mood", dot = true)
             LegendSwatch(Color.White, "predicted", dashed = true)
             LegendSwatch(YellowSoft, "fertile")
             LegendSwatch(Purple.copy(alpha = 0.3f), "pms")
@@ -403,7 +405,7 @@ private fun MonthNavButton(label: String, onClick: () -> Unit) {
 private fun DayCell(day: CycleDay, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(9.dp)
     val bg = when {
-        day.hasLog -> Teal
+        day.hasFlow -> Teal
         day.isPredictedPeriod -> Color.White
         day.isFertile -> YellowSoft
         day.isPmsWindow -> Purple.copy(alpha = 0.3f)
@@ -414,7 +416,7 @@ private fun DayCell(day: CycleDay, selected: Boolean, onClick: () -> Unit) {
         .fillMaxSize()
         .background(bg, shape)
         .then(
-            if (day.isPredictedPeriod && !day.hasLog) {
+            if (day.isPredictedPeriod && !day.hasFlow) {
                 Modifier.dashedBorder(2.dp, Ink, shape, dashLength = 3.dp, gapLength = 2.dp)
             } else {
                 Modifier.border(if (day.isToday || selected) 3.dp else 2.dp, Ink.copy(alpha = if (day.isToday || selected) 1f else 0.35f), shape)
@@ -425,7 +427,7 @@ private fun DayCell(day: CycleDay, selected: Boolean, onClick: () -> Unit) {
     Box(modifier = base, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(day.date.dayOfMonth.toString(), style = MaterialTheme.typography.bodySmall.copy(fontWeight = MaterialTheme.typography.titleMedium.fontWeight))
-            if (day.hasLog) {
+            if (day.hasEntry) {
                 Box(Modifier.size(3.dp).background(Ink, CircleShape))
             }
         }
@@ -433,9 +435,10 @@ private fun DayCell(day: CycleDay, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun LegendSwatch(color: Color, label: String, dashed: Boolean = false) {
+private fun LegendSwatch(color: Color, label: String, dashed: Boolean = false, dot: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(
+            contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(15.dp)
                 .background(color, RoundedCornerShape(4.dp))
@@ -446,7 +449,9 @@ private fun LegendSwatch(color: Color, label: String, dashed: Boolean = false) {
                         Modifier.border(1.5.dp, Ink, RoundedCornerShape(4.dp))
                     },
                 ),
-        )
+        ) {
+            if (dot) Box(Modifier.size(3.dp).background(Ink, CircleShape))
+        }
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }
@@ -465,7 +470,7 @@ private fun SelectedDayCard(date: LocalDate, logs: List<CycleLogDto>, onLogThisD
         Text(date.format(DateTimeFormatter.ofPattern("MMM d", Locale.ENGLISH)).uppercase(), style = PinguCoduType.monoLabel)
         Spacer(Modifier.height(4.dp))
         Text(
-            log?.let { "${it.flow ?: "logged"}${it.note?.let { n -> " · $n" } ?: ""}" } ?: "nothing logged yet for this day",
+            log?.let { "${it.flow ?: "no period"}${it.note?.let { n -> " · $n" } ?: ""}" } ?: "nothing logged yet for this day",
             style = MaterialTheme.typography.bodyMedium,
             color = Ink,
         )
@@ -916,15 +921,20 @@ private fun ObservationRow(observation: CycleObservationDto, onClick: () -> Unit
 private fun AddLogDialog(
     date: String,
     existingLog: CycleLogDto?,
+    previousDayFlow: String?,
     dialogError: String?,
     isSubmitting: Boolean,
     onDismiss: () -> Unit,
-    onSubmit: (logDate: String, flow: String, note: String?, tags: List<String>, partnerNote: String?) -> Unit,
+    onSubmit: (logDate: String, flow: String?, note: String?, tags: List<String>, partnerNote: String?) -> Unit,
 ) {
-    var flow by remember { mutableStateOf(existingLog?.flow ?: FLOWS[1]) }
+    // New entries continue yesterday's period if there was one; otherwise default to a mood/symptom-only log.
+    var flow by remember { mutableStateOf(if (existingLog != null) existingLog.flow else previousDayFlow) }
     var note by remember { mutableStateOf(existingLog?.note ?: "") }
     var partnerNote by remember { mutableStateOf(existingLog?.partnerNote ?: "") }
     var selectedTags by remember { mutableStateOf(existingLog?.tags?.toSet() ?: emptySet()) }
+
+    val isEmpty = flow == null && selectedTags.isEmpty() && note.isBlank() && partnerNote.isBlank()
+    var showEmptyError by remember { mutableStateOf(false) }
 
     fun submit() = onSubmit(date, flow, note.ifBlank { null }, selectedTags.toList(), partnerNote.ifBlank { null })
 
@@ -990,6 +1000,7 @@ private fun AddLogDialog(
                     SectionLabel("flow")
                     Spacer(Modifier.height(8.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NeoChip(label = "no period", selected = flow == null, large = true, onClick = { flow = null })
                         FLOWS.forEach { f ->
                             NeoChip(label = f, selected = flow == f, large = true, onClick = { flow = f })
                         }
@@ -1047,8 +1058,9 @@ private fun AddLogDialog(
                     )
                     Spacer(Modifier.height(20.dp))
 
-                    if (dialogError != null) {
-                        Text(dialogError, color = Coral, style = MaterialTheme.typography.bodyMedium)
+                    val error = dialogError ?: "pick a flow, a tag, or add a note".takeIf { showEmptyError && isEmpty }
+                    if (error != null) {
+                        Text(error, color = Coral, style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(12.dp))
                     }
 
@@ -1058,7 +1070,9 @@ private fun AddLogDialog(
                             .hardShadow(RoundedCornerShape(16.dp), offsetX = 4.dp, offsetY = 4.dp)
                             .border(BorderWidth, Ink, RoundedCornerShape(16.dp))
                             .background(Ink, RoundedCornerShape(16.dp))
-                            .clickableNoRipple(enabled = !isSubmitting) { submit() }
+                            .clickableNoRipple(enabled = !isSubmitting) {
+                                if (isEmpty) showEmptyError = true else submit()
+                            }
                             .padding(vertical = 20.dp),
                         contentAlignment = Alignment.Center,
                     ) {

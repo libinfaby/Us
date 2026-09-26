@@ -259,12 +259,20 @@ cycleRoutes.post('/logs', async (c) => {
 
   const body = await c.req.json().catch(() => null);
   const { logDate, flow, note, tags, partnerNote } = body ?? {};
-  if (typeof logDate !== 'string' || logDate.trim().length === 0 || !isFlow(flow)) {
-    return c.json({ error: 'logDate and a valid flow (spotting/light/medium/heavy) are required' }, 400);
+  if (typeof logDate !== 'string' || logDate.trim().length === 0) {
+    return c.json({ error: 'logDate is required' }, 400);
+  }
+  // flow is optional so mood/symptoms can be logged outside a period; null means "no period".
+  if (flow != null && !isFlow(flow)) {
+    return c.json({ error: 'flow must be one of spotting/light/medium/heavy, or omitted' }, 400);
   }
   const tagList = tags === undefined ? [] : tags;
   if (!isValidTags(tagList)) {
     return c.json({ error: `tags must be from: ${ALL_TAGS.join(', ')}` }, 400);
+  }
+  const hasText = (v: unknown) => typeof v === 'string' && v.trim().length > 0;
+  if (flow == null && tagList.length === 0 && !hasText(note) && !hasText(partnerNote)) {
+    return c.json({ error: 'pick a flow, a tag, or add a note' }, 400);
   }
 
   const existing = await c.env.DB.prepare('SELECT id FROM cycle_logs WHERE log_date = ?')
@@ -279,7 +287,7 @@ cycleRoutes.post('/logs', async (c) => {
     .bind(
       id,
       logDate,
-      flow,
+      isFlow(flow) ? flow : null,
       JSON.stringify(tagList),
       typeof note === 'string' ? note : null,
       typeof partnerNote === 'string' ? partnerNote : null,

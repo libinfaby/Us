@@ -47,7 +47,7 @@ data class CycleStatusDto(
 @Serializable
 data class CreateCycleLogRequest(
     val logDate: String,
-    val flow: String,
+    val flow: String? = null,
     val note: String? = null,
     val tags: List<String> = emptyList(),
     val partnerNote: String? = null,

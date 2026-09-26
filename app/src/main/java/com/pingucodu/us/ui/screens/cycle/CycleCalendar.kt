@@ -15,7 +15,10 @@ private const val PMS_WINDOW_DAYS = 5L
 /** One cell in the month grid. Null slots (returned as leading padding) render as blank space. */
 data class CycleDay(
     val date: LocalDate,
-    val hasLog: Boolean,
+    /** A flow was logged - this is a period day. */
+    val hasFlow: Boolean,
+    /** Anything was logged (flow, or mood/symptoms/notes only). */
+    val hasEntry: Boolean,
     val isFertile: Boolean,
     val isPredictedPeriod: Boolean,
     val isPmsWindow: Boolean,
@@ -30,10 +33,13 @@ data class CycleStats(
     val recentCycles: List<CycleBar>,
 )
 
-private fun loggedDatesOf(logs: List<CycleLogDto>): List<LocalDate> =
+private fun parsedDatesOf(logs: List<CycleLogDto>): List<LocalDate> =
     logs.mapNotNull { runCatching { LocalDate.parse(it.logDate, ISO) }.getOrNull() }.distinct().sorted()
 
-/** A "cycle start" is the first logged day after a gap of more than one day from the previous log. */
+/** Only flow days count as period days - mood/symptom-only logs must not skew cycle math. */
+private fun loggedDatesOf(logs: List<CycleLogDto>): List<LocalDate> = parsedDatesOf(logs.filter { it.flow != null })
+
+/** A "cycle start" is the first flow day after a gap of more than one day from the previous flow day. */
 fun cycleStartsFrom(logs: List<CycleLogDto>): List<LocalDate> {
     val dates = loggedDatesOf(logs)
     if (dates.isEmpty()) return emptyList()
@@ -87,7 +93,8 @@ fun buildCalendarDays(
     predictedNextDate: String?,
     today: LocalDate,
 ): List<CycleDay?> {
-    val loggedDates = loggedDatesOf(logs).toSet()
+    val flowDates = loggedDatesOf(logs).toSet()
+    val entryDates = parsedDatesOf(logs).toSet()
     val predictedStart = predictedNextDate?.let { runCatching { LocalDate.parse(it, ISO) }.getOrNull() }
     val fertileRange = predictedStart?.let { it.minusDays(17)..it.minusDays(12) }
     val periodRange = predictedStart?.let { it..it.plusDays(PERIOD_LEN - 1) }
@@ -98,7 +105,8 @@ fun buildCalendarDays(
         val date = month.atDay(dayOfMonth)
         CycleDay(
             date = date,
-            hasLog = loggedDates.contains(date),
+            hasFlow = flowDates.contains(date),
+            hasEntry = entryDates.contains(date),
             isFertile = fertileRange?.contains(date) == true,
             isPredictedPeriod = periodRange?.contains(date) == true && date.isAfter(today),
             isPmsWindow = pmsRange?.contains(date) == true && date.isAfter(today),

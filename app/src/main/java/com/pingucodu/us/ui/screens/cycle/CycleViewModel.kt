@@ -99,7 +99,7 @@ class CycleViewModel @Inject constructor(
         _uiState.update { it.copy(showAddDialog = false, dialogError = null) }
     }
 
-    fun addLog(logDate: String, flow: String, note: String?, tags: List<String> = emptyList(), partnerNote: String? = null) {
+    fun addLog(logDate: String, flow: String?, note: String?, tags: List<String> = emptyList(), partnerNote: String? = null) {
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true, dialogError = null) }
             when (val result = cycleRepository.addLog(logDate, flow, note, tags, partnerNote)) {
