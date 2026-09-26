@@ -181,4 +181,14 @@ interface ApiService {
         @Header("Authorization") bearerToken: String,
         @Body request: RegisterDeviceTokenRequest,
     ): Response<Unit>
+
+    @POST("nudges")
+    suspend fun sendNudge(
+        @Header("Authorization") bearerToken: String,
+        @Body request: SendNudgeRequest,
+    ): Response<NudgeDto>
+
+    @GET("nudges/latest")
+    suspend fun getLatestNudge(@Header("Authorization") bearerToken: String): Response<LatestNudgeResponse>
+
 }

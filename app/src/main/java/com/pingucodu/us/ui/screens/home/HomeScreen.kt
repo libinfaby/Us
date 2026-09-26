@@ -1,8 +1,11 @@
 package com.pingucodu.us.ui.screens.home
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,7 +34,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,7 +45,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.ExpenseDto
+import com.pingucodu.us.data.network.NudgeDto
+import com.pingucodu.us.ui.components.NeoBottomSheet
+import com.pingucodu.us.ui.components.NeoChoiceChip
+import com.pingucodu.us.ui.components.NeoField
+import com.pingucodu.us.ui.components.SectionLabel
+import com.pingucodu.us.ui.components.SubmitButton
 import com.pingucodu.us.ui.theme.BorderWidth
+import com.pingucodu.us.ui.theme.Coral
+import com.pingucodu.us.ui.theme.DescriptionGrey
+import com.pingucodu.us.ui.theme.Green
+import com.pingucodu.us.ui.theme.Orange
 import com.pingucodu.us.ui.theme.DashedDivider
 import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.Pink
@@ -67,6 +82,7 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showNudgePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.refreshOnEntry()
@@ -103,6 +119,15 @@ fun HomeScreen(
                 openCount = uiState.openExpenseCount,
                 onSeeAll = onNavigateToMoney,
                 onSettleUp = onNavigateToMoney,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            NudgeCard(
+                status = uiState.nudgeStatus,
+                latestNudge = uiState.latestNudge,
+                latestNudgeTimeLabel = uiState.latestNudgeTimeLabel,
+                onSend = { viewModel.sendNudge() },
+                onLongPress = { showNudgePicker = true },
             )
             Spacer(Modifier.height(16.dp))
 
@@ -171,7 +196,120 @@ fun HomeScreen(
             Spacer(Modifier.height(110.dp))
         }
     }
+
+    if (showNudgePicker) {
+        NudgePickerSheet(
+            onDismiss = { showNudgePicker = false },
+            onSend = { message ->
+                viewModel.sendNudge(message)
+                showNudgePicker = false
+            },
+        )
+    }
 }
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun NudgeCard(
+    status: NudgeStatus,
+    latestNudge: NudgeDto?,
+    latestNudgeTimeLabel: String,
+    onSend: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    val nameMask = LocalNameMask.current
+    val buttonShape = RoundedCornerShape(14.dp)
+    val (label, color) = when (status) {
+        NudgeStatus.Idle -> "send a nudge 💌" to Orange
+        NudgeStatus.Sending -> "sending…" to Orange
+        NudgeStatus.Sent -> "sent 💌" to Green
+        is NudgeStatus.Failed -> status.message to Coral
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .hardShadow(CardShape)
+            .border(BorderWidth, Ink, CardShape)
+            .background(YellowSoft, CardShape)
+            .padding(14.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("THINKING OF YOU", style = MaterialTheme.typography.labelMedium)
+            Text("hold for more", style = MaterialTheme.typography.labelMedium, color = Ink.copy(alpha = 0.55f))
+        }
+        Spacer(Modifier.height(10.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .hardShadow(buttonShape, offsetX = 3.dp, offsetY = 3.dp)
+                .border(BorderWidth, Ink, buttonShape)
+                .background(color, buttonShape)
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = status != NudgeStatus.Sending,
+                    onClick = onSend,
+                    onLongClick = onLongPress,
+                )
+                .padding(vertical = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(label, style = MaterialTheme.typography.headlineSmall, color = Ink)
+        }
+        if (latestNudge != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "${nameMask.resolve(latestNudge.sender)}: \"${latestNudge.message}\" · $latestNudgeTimeLabel",
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+            )
+        }
+    }
+}
+
+private val NUDGE_PRESETS = listOf(
+    "miss you 🥺",
+    "sending a hug 🤗",
+    "hungry? 🍕",
+    "😘😘😘",
+    "coffee? ☕",
+    "goodnight 🌙",
+    "call me when free 📞",
+    "proud of you 💪",
+)
+
+@Composable
+private fun NudgePickerSheet(onDismiss: () -> Unit, onSend: (String) -> Unit) {
+    var custom by remember { mutableStateOf("") }
+    NeoBottomSheet(title = "send a nudge", onDismiss = onDismiss) {
+        Text(
+            "tap one to send it right away, or write your own.",
+            style = MaterialTheme.typography.bodySmall,
+            color = DescriptionGrey,
+        )
+        Spacer(Modifier.height(14.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            NUDGE_PRESETS.forEach { preset ->
+                NeoChoiceChip(label = preset, selected = false, onClick = { onSend(preset) })
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        SectionLabel("your own words")
+        Spacer(Modifier.height(8.dp))
+        NeoField(
+            value = custom,
+            onValueChange = { custom = it.take(NUDGE_MAX_LENGTH) },
+            placeholder = "say something sweet",
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text("${custom.length}/$NUDGE_MAX_LENGTH", style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
+        Spacer(Modifier.height(16.dp))
+        SubmitButton(label = "send it 💌", enabled = custom.isNotBlank()) { onSend(custom.trim()) }
+    }
+}
+
+private const val NUDGE_MAX_LENGTH = 80
 
 @Composable
 private fun RecurringExpenseRow(expense: ExpenseDto, onClick: () -> Unit) {

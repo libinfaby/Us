@@ -6,6 +6,7 @@ import { hangoutsRoutes } from './routes/hangouts';
 import { cycleRoutes } from './routes/cycle';
 import { stashRoutes } from './routes/stash';
 import { devicesRoutes } from './routes/devices';
+import { nudgesRoutes } from './routes/nudges';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -16,5 +17,6 @@ app.route('/hangouts', hangoutsRoutes);
 app.route('/cycle', cycleRoutes);
 app.route('/stash', stashRoutes);
 app.route('/devices', devicesRoutes);
+app.route('/nudges', nudgesRoutes);
 
 export default app;

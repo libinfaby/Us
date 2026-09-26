@@ -10,12 +10,17 @@ import com.pingucodu.us.data.money.ExpenseRepository
 import com.pingucodu.us.data.money.ExpensesResult
 import com.pingucodu.us.data.network.CycleStatusDto
 import com.pingucodu.us.data.network.ExpenseDto
+import com.pingucodu.us.data.network.NudgeDto
 import com.pingucodu.us.data.network.StashItemDto
+import com.pingucodu.us.data.nudge.LatestNudgeResult
+import com.pingucodu.us.data.nudge.NudgeRepository
+import com.pingucodu.us.data.nudge.SendNudgeResult
 import com.pingucodu.us.data.stash.StashItemsResult
 import com.pingucodu.us.data.stash.StashRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +34,14 @@ import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 enum class ActivitySource { MONEY, CYCLE, STASH }
+
+/** The nudge button's transient feedback state - Sent/Failed flash for a moment, then go back to Idle. */
+sealed interface NudgeStatus {
+    data object Idle : NudgeStatus
+    data object Sending : NudgeStatus
+    data object Sent : NudgeStatus
+    data class Failed(val message: String) : NudgeStatus
+}
 
 /**
  * [badgeCode] is the 2-letter (or "₹") tag shown in the row's source badge; only meaningful for STASH.
@@ -54,6 +67,9 @@ data class HomeUiState(
     val stashSavedCount: Int = 0,
     val stashTodoCount: Int = 0,
     val activityFeed: List<ActivityFeedItem> = emptyList(),
+    val latestNudge: NudgeDto? = null,
+    val latestNudgeTimeLabel: String = "",
+    val nudgeStatus: NudgeStatus = NudgeStatus.Idle,
     val errorMessage: String? = null,
 )
 
@@ -65,6 +81,7 @@ class HomeViewModel @Inject constructor(
     private val cycleRepository: CycleRepository,
     private val stashRepository: StashRepository,
     private val authRepository: AuthRepository,
+    private val nudgeRepository: NudgeRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -94,6 +111,10 @@ class HomeViewModel @Inject constructor(
                 val balanceDeferred = async { expenseRepository.getBalance() }
                 val cycleDeferred = async { cycleRepository.getStatus() }
                 val stashDeferred = async { stashRepository.getItems(status = "everything") }
+                // The nudge card is an extra: if it fails, it just keeps its last value instead of
+                // turning the whole dashboard into an error.
+                val nudgeDeferred = async { nudgeRepository.getLatest() }
+                applyExtras(nudgeDeferred.await())
                 listOf(expensesDeferred.await(), balanceDeferred.await(), cycleDeferred.await(), stashDeferred.await())
             }
             _uiState.update { state ->
@@ -119,6 +140,32 @@ class HomeViewModel @Inject constructor(
                     errorMessage = error,
                 )
             }
+        }
+    }
+
+    private fun applyExtras(nudge: LatestNudgeResult) {
+        _uiState.update { state ->
+            val latestNudge = if (nudge is LatestNudgeResult.Success) nudge.nudge else state.latestNudge
+            state.copy(
+                latestNudge = latestNudge,
+                latestNudgeTimeLabel = latestNudge?.let { relativeTime(it.createdAt) } ?: "",
+            )
+        }
+    }
+
+    /** [message] null = the server picks a random cute one. */
+    fun sendNudge(message: String? = null) {
+        if (_uiState.value.nudgeStatus == NudgeStatus.Sending) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(nudgeStatus = NudgeStatus.Sending) }
+            val status = when (val result = nudgeRepository.sendNudge(message)) {
+                is SendNudgeResult.Success -> NudgeStatus.Sent
+                is SendNudgeResult.Rejected -> NudgeStatus.Failed(result.message)
+                is SendNudgeResult.NetworkError -> NudgeStatus.Failed(result.message)
+            }
+            _uiState.update { it.copy(nudgeStatus = status) }
+            delay(if (status is NudgeStatus.Sent) 2_000 else 3_000)
+            _uiState.update { if (it.nudgeStatus == status) it.copy(nudgeStatus = NudgeStatus.Idle) else it }
         }
     }
 
