@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -141,6 +142,8 @@ fun NeoField(
     textStyle: TextStyle = MaterialTheme.typography.titleMedium.copy(fontSize = 13.sp, lineHeight = 18.sp),
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 13.dp),
     minLines: Int = 1,
+    /** true = one line that scrolls sideways instead of wrapping onto more lines. */
+    singleLine: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
@@ -153,13 +156,20 @@ fun NeoField(
             .padding(contentPadding),
     ) {
         if (value.isEmpty()) {
-            Text(placeholder, style = textStyle, color = PlaceholderGrey)
+            Text(
+                placeholder,
+                style = textStyle,
+                color = PlaceholderGrey,
+                maxLines = if (singleLine) 1 else Int.MAX_VALUE,
+                overflow = if (singleLine) TextOverflow.Ellipsis else TextOverflow.Clip,
+            )
         }
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             textStyle = textStyle.copy(color = Ink),
             cursorBrush = SolidColor(Ink),
+            singleLine = singleLine,
             minLines = minLines,
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
