@@ -133,7 +133,7 @@ stashRoutes.get('/preview', async (c) => {
   const url = parseHttpUrl(c.req.query('url') ?? '');
   if (!url) return c.json({ error: 'url must be an http(s) link' }, 400);
   if (!isSupportedPreviewUrl(url)) return c.json({ error: 'only imdb and google maps links can be fetched' }, 400);
-  const preview = await fetchLinkPreview(url);
+  const preview = await fetchLinkPreview(url, c.env.OMDB_API_KEY);
   if (!preview) return c.json({ error: "couldn't read that link - fill it in by hand" }, 422);
   return c.json(preview);
 });
@@ -149,7 +149,7 @@ stashRoutes.get('/movie-search', async (c) => {
 
 /** Title, plot, genres and IMDb link for a film picked from /movie-search, by its Wikidata id. */
 stashRoutes.get('/movie-preview', async (c) => {
-  const preview = await filmPreview(c.req.query('id') ?? '');
+  const preview = await filmPreview(c.req.query('id') ?? '', c.env.OMDB_API_KEY);
   if (!preview) return c.json({ error: "couldn't load that movie - fill it in by hand" }, 422);
   return c.json(preview);
 });

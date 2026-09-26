@@ -1,5 +1,6 @@
 // Text-only link previews for Stash, for IMDb and Google Maps links only.
-// IMDb films are looked up on Wikidata + Wikipedia. Maps links carry the place
+// IMDb films come from OMDb (IMDb's plot and genres), with Wikidata + Wikipedia
+// as the fallback and for finding films by name. Maps links carry the place
 // in the URL they redirect to, so those redirects are followed by hand and no
 // Google page is ever loaded. No images on purpose.
 
@@ -214,12 +215,38 @@ type WikidataFilm = {
   };
 };
 
+type OmdbFilm = { title: string | null; plot: string | null; genres: string[] };
+
+/**
+ * IMDb's own details for a film via OMDb (IMDb itself blocks non-browser fetches): the title and
+ * year, IMDb's one-line plot ("An insurance salesman begins to suspect that his whole life is
+ * actually some sort of reality TV show.") and its genres. Null without a key, or when OMDb fails.
+ */
+async function omdbFilm(imdbId: string, apiKey: string | undefined): Promise<OmdbFilm | null> {
+  if (!apiKey) return null;
+  const res = await fetchJson<{ Response?: string; Title?: string; Year?: string; Plot?: string; Genre?: string }>(
+    `https://www.omdbapi.com/?i=${imdbId}&plot=short&apikey=${encodeURIComponent(apiKey)}`,
+  );
+  if (res?.Response !== 'True') return null;
+  // OMDb says "N/A" for anything it doesn't have.
+  const known = (value: string | undefined) => (value && value !== 'N/A' ? clean(value) : null);
+  const name = known(res.Title);
+  // A series' Year is a range like "2019–2022"; the first year is enough.
+  const year = known(res.Year)?.match(/^\d{4}/)?.[0];
+  return {
+    title: name ? (year ? `${name} (${year})` : name) : null,
+    plot: known(res.Plot),
+    genres: toGenreTags(known(res.Genre)?.split(',') ?? []),
+  };
+}
+
 /**
  * Everything the Stash form fills in for a film, from its Wikidata item (e.g. Q25188 = Inception):
- * "Inception (2010)", the opening of its Wikipedia plot, up to three genres, and its IMDb link
- * (empty when Wikidata has none). Wikidata and Wikipedia need no API key.
+ * "Inception (2010)", a short plot, up to three genres, and its IMDb link (empty when Wikidata has
+ * none). The plot and genres are IMDb's via OMDb when the film has an IMDb id; otherwise, or when
+ * OMDb has nothing, the opening of the Wikipedia plot and Wikidata's genres.
  */
-export async function filmPreview(entityId: string): Promise<LinkPreview | null> {
+export async function filmPreview(entityId: string, omdbApiKey?: string): Promise<LinkPreview | null> {
   if (!/^Q\d+$/.test(entityId)) return null;
   const entities = await fetchJson<{ entities?: Record<string, WikidataFilm> }>(
     `${WIKIDATA_API}?action=wbgetentities&ids=${entityId}&props=labels|descriptions|sitelinks|claims&languages=en|mul&sitefilter=enwiki&format=json`,
@@ -233,38 +260,46 @@ export async function filmPreview(entityId: string): Promise<LinkPreview | null>
   const imdbId = (entity.claims?.P345 ?? [])
     .map((claim) => claim.mainsnak?.datavalue?.value)
     .find((value): value is string => typeof value === 'string' && /^tt\d+$/.test(value));
+  const omdb = imdbId ? await omdbFilm(imdbId, omdbApiKey) : null;
   // Genre (P136) values are entity ids like Q2484376; their names need one more lookup.
   const genreIds = (entity.claims?.P136 ?? [])
     .map((claim) => claim.mainsnak?.datavalue?.value?.id)
     .filter((id): id is string => !!id && /^Q\d+$/.test(id))
     .slice(0, MAX_GENRES);
-  const [plot, genres] = await Promise.all([
-    articleTitle ? wikipediaPlotOpening(articleTitle) : Promise.resolve(null),
-    wikidataLabels(genreIds),
+  // Only ask Wikipedia / Wikidata for what OMDb didn't give us.
+  const [wikiPlot, wikiGenres] = await Promise.all([
+    !omdb?.plot && articleTitle ? wikipediaPlotOpening(articleTitle) : Promise.resolve(null),
+    omdb?.genres.length ? Promise.resolve([]) : wikidataLabels(genreIds),
   ]);
   // No Plot section -> the article's opening paragraph; no article at all -> the short tagline.
-  const summary = plot ?? (articleTitle ? await wikipediaSummary(articleTitle) : null);
+  const plot = omdb?.plot ?? wikiPlot ?? (articleTitle ? await wikipediaSummary(articleTitle) : null);
   // "Title (year)" when the tagline leads with the year.
   const year = tagline?.match(/^(\d{4})\b/)?.[1];
   return {
     url: imdbId ? `https://www.imdb.com/title/${imdbId}/` : '',
-    title: year ? `${label} (${year})` : label,
-    description: summary ?? (tagline ? tagline.charAt(0).toUpperCase() + tagline.slice(1) : null),
-    genres: toGenreTags(genres),
+    title: year ? `${label} (${year})` : (omdb?.title ?? label),
+    description: plot ?? (tagline ? tagline.charAt(0).toUpperCase() + tagline.slice(1) : null),
+    genres: omdb?.genres.length ? omdb.genres : toGenreTags(wikiGenres),
     suggestedType: 'movie',
   };
 }
 
 /**
- * IMDb answers every non-browser fetch with a bot challenge (HTTP 202), so its pages can't be
- * read. Wikidata indexes films by IMDb id (property P345), so find the film's item there instead.
+ * A pasted IMDb link: OMDb alone usually has everything (one request). When it doesn't, find the
+ * film's Wikidata item by its IMDb id (property P345) and build the preview from there.
  */
-async function imdbPreviewFromWikidata(imdbId: string): Promise<LinkPreview | null> {
+async function imdbPreview(imdbId: string, omdbApiKey: string | undefined): Promise<LinkPreview | null> {
+  const omdb = await omdbFilm(imdbId, omdbApiKey);
+  if (omdb?.title && omdb.plot) {
+    return { url: `https://www.imdb.com/title/${imdbId}/`, title: omdb.title, description: omdb.plot, genres: omdb.genres, suggestedType: 'movie' };
+  }
   const search = await fetchJson<{ query?: { search?: { title: string }[] } }>(
     `${WIKIDATA_API}?action=query&list=search&srsearch=haswbstatement:P345=${imdbId}&srlimit=1&format=json`,
   );
   const entityId = search?.query?.search?.[0]?.title;
-  return entityId ? filmPreview(entityId) : null;
+  // OMDb already came up short, so don't ask it again - but keep IMDb's genres if it had them.
+  const film = entityId ? await filmPreview(entityId) : null;
+  return film && omdb?.genres.length ? { ...film, genres: omdb.genres } : film;
 }
 
 export type MovieSearchResult = {
@@ -316,11 +351,14 @@ function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
-/** Returns null for links other than IMDb / Google Maps, or when there's nothing usable to show. */
-export async function fetchLinkPreview(input: URL): Promise<LinkPreview | null> {
+/**
+ * Returns null for links other than IMDb / Google Maps, or when there's nothing usable to show.
+ * [omdbApiKey] is the OMDB_API_KEY secret, used for IMDb's plot and genres.
+ */
+export async function fetchLinkPreview(input: URL, omdbApiKey?: string): Promise<LinkPreview | null> {
   const imdbId = imdbIdFromUrl(input);
   if (imdbId) {
-    const film = await imdbPreviewFromWikidata(imdbId);
+    const film = await imdbPreview(imdbId, omdbApiKey);
     // Keep the link as pasted.
     return film ? { ...film, url: input.toString() } : null;
   }
