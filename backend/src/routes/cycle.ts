@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
 import { requireAuth, type AuthVariables } from '../middleware/auth';
 import { notifyPartner } from '../lib/notify';
+import { addDays, daysBetween } from '../lib/dates';
 
 type CycleContext = Context<{ Bindings: Env; Variables: AuthVariables }>;
 
@@ -71,20 +72,6 @@ function parseTags(json: string): string[] {
   } catch {
     return [];
   }
-}
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-function addDays(isoDate: string, days: number): string {
-  const date = new Date(`${isoDate}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function daysBetween(fromIso: string, toIso: string): number {
-  const from = new Date(`${fromIso}T00:00:00Z`).getTime();
-  const to = new Date(`${toIso}T00:00:00Z`).getTime();
-  return Math.round((to - from) / MS_PER_DAY);
 }
 
 function average(values: number[]): number {
