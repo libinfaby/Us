@@ -1,10 +1,10 @@
 // Text-only link previews for Stash, for IMDb and Google Maps links only.
-// IMDb films are looked up on Wikidata + Wikipedia; Maps pages are read for
-// their OpenGraph / meta tags with Workers' built-in HTMLRewriter, so there's
-// no HTML-parsing dependency. No images on purpose.
+// IMDb films are looked up on Wikidata + Wikipedia. Maps links carry the place
+// in the URL they redirect to, so those redirects are followed by hand and no
+// Google page is ever loaded. No images on purpose.
 
 const FETCH_TIMEOUT_MS = 6000;
-const MAX_DESCRIPTION_LENGTH = 300;
+const MAX_MAPS_REDIRECTS = 5;
 const MAX_GENRES = 3;
 const USER_AGENT = 'PinguCoduLinkPreview/1.0 (+personal app)';
 
@@ -45,46 +45,6 @@ export function isMapsUrl(url: URL): boolean {
   return /(^|\.)google\.[a-z.]+$/.test(host) && url.pathname.startsWith('/maps');
 }
 
-type Meta = {
-  ogTitle?: string;
-  twitterTitle?: string;
-  docTitle: string;
-  ogDescription?: string;
-  metaDescription?: string;
-};
-
-async function extractMeta(res: Response): Promise<Meta> {
-  const meta: Meta = { docTitle: '' };
-  let inTitle = false;
-  const rewriter = new HTMLRewriter()
-    .on('meta', {
-      element(el) {
-        const key = (el.getAttribute('property') ?? el.getAttribute('name') ?? '').toLowerCase();
-        const content = el.getAttribute('content');
-        if (!content) return;
-        if (key === 'og:title') meta.ogTitle ??= content;
-        else if (key === 'twitter:title') meta.twitterTitle ??= content;
-        else if (key === 'og:description') meta.ogDescription ??= content;
-        else if (key === 'description') meta.metaDescription ??= content;
-      },
-    })
-    .on('title', {
-      element(el) {
-        if (meta.docTitle.length > 0) return;
-        inTitle = true;
-        el.onEndTag(() => {
-          inTitle = false;
-        });
-      },
-      text(chunk) {
-        if (inTitle) meta.docTitle += chunk.text;
-      },
-    });
-  // Consume the transformed body so the handlers run; we only care about the side effects.
-  await rewriter.transform(res).arrayBuffer();
-  return meta;
-}
-
 function decodeEntities(text: string): string {
   return text
     .replace(/&amp;/g, '&')
@@ -101,29 +61,67 @@ function clean(text: string | undefined): string | null {
   return cleaned.length > 0 ? cleaned : null;
 }
 
-/** Google Maps pages often only say "Google Maps" in their tags; the place name is in the URL path. */
-function placeNameFromMapsUrl(url: URL): string | null {
-  const match = url.pathname.match(/\/maps\/place\/([^/]+)/);
-  if (!match) return null;
+function decodePathSegment(segment: string): string | null {
   try {
-    return clean(decodeURIComponent(match[1].replace(/\+/g, ' ')));
+    return clean(decodeURIComponent(segment.replace(/\+/g, ' ')));
   } catch {
     return null;
   }
 }
 
-/** Maps links sometimes carry the place as a search instead: /maps/search/{q} or ?q={q}. */
-function searchQueryFromMapsUrl(url: URL): string | null {
-  const match = url.pathname.match(/\/maps\/search\/([^/]+)/);
-  const raw = match ? match[1] : url.searchParams.get('q');
-  if (!raw) return null;
-  try {
-    const decoded = clean(decodeURIComponent(raw.replace(/\+/g, ' ')));
-    // A bare "lat,lng" query isn't a name worth saving.
-    return decoded && !/^-?[\d.]+,\s*-?[\d.]+$/.test(decoded) ? decoded : null;
-  } catch {
-    return null;
+/**
+ * The place a Maps URL points at: /maps/place/{name}, /maps/search/{query} or ?q={query}.
+ * Only read from real Maps URLs - a Google captcha page (/sorry/index) also has a ?q=, and
+ * it's an opaque token, not a place.
+ */
+function placeFromMapsUrl(url: URL): string | null {
+  if (!isMapsUrl(url)) return null;
+  const pathMatch = url.pathname.match(/\/maps\/(?:place|search)\/([^/]+)/);
+  const place = pathMatch ? decodePathSegment(pathMatch[1]) : clean(url.searchParams.get('q') ?? undefined);
+  // A bare "lat,lng" isn't a name worth saving.
+  return place && !/^-?[\d.]+,\s*-?[\d.]+$/.test(place) ? place : null;
+}
+
+/** When Google rate-limits us it redirects to /sorry/index?continue={where we were going}. */
+function unwrapGoogleCaptcha(url: URL): URL {
+  if (!/(^|\.)google\.[a-z.]+$/i.test(url.hostname) || !url.pathname.startsWith('/sorry')) return url;
+  return parseHttpUrl(url.searchParams.get('continue') ?? '') ?? url;
+}
+
+/**
+ * Follows a Maps link's redirects one hop at a time (maps.app.goo.gl -> google.com/maps/place/...)
+ * and returns the place named along the way. The Maps pages themselves are never loaded: their
+ * tags only ever say "Google Maps", and Google often answers Cloudflare's servers with a captcha.
+ */
+async function placeFromMapsLink(input: URL): Promise<string | null> {
+  let current = unwrapGoogleCaptcha(input);
+  for (let hop = 0; hop <= MAX_MAPS_REDIRECTS; hop++) {
+    const place = placeFromMapsUrl(current);
+    if (place) return place;
+    if (hop === MAX_MAPS_REDIRECTS) break;
+
+    let res: Response;
+    try {
+      res = await fetch(current.toString(), {
+        redirect: 'manual',
+        headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en' },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+    } catch {
+      return null;
+    }
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
+    if (!location) return null;
+    let next: URL | null;
+    try {
+      next = parseHttpUrl(new URL(location, current).toString());
+    } catch {
+      next = null;
+    }
+    if (!next) return null;
+    current = unwrapGoogleCaptcha(next);
   }
+  return null;
 }
 
 /** "Science fiction film" / "heist film" -> "science fiction" / "heist"; keeps the first few, no repeats. */
@@ -133,9 +131,6 @@ function toGenreTags(names: (string | null | undefined)[]): string[] {
     .filter((tag): tag is string => !!tag);
   return [...new Set(tags)].slice(0, MAX_GENRES);
 }
-
-// Google's boilerplate og:description on every Maps page - not worth saving.
-const GENERIC_MAPS_DESCRIPTION = /^find local businesses, view maps and get driving directions/i;
 
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
 
@@ -242,47 +237,8 @@ export async function fetchLinkPreview(input: URL): Promise<LinkPreview | null> 
   }
   if (!isMapsUrl(input)) return null;
 
-  let res: Response;
-  try {
-    res = await fetch(input.toString(), {
-      redirect: 'follow',
-      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en' },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-  } catch {
-    return null;
-  }
-
-  const finalUrl = parseHttpUrl(res.url) ?? input;
-
-  let meta: Meta = { docTitle: '' };
-  const contentType = res.headers.get('content-type') ?? '';
-  if (res.ok && contentType.includes('html')) {
-    try {
-      meta = await extractMeta(res);
-    } catch {
-      // Fall through - the URL alone can still give us a name.
-    }
-  }
-
-  let title = clean(meta.ogTitle) ?? clean(meta.twitterTitle) ?? clean(meta.docTitle);
-  if (!title || /^google maps$/i.test(title)) {
-    title =
-      placeNameFromMapsUrl(finalUrl) ??
-      placeNameFromMapsUrl(input) ??
-      searchQueryFromMapsUrl(finalUrl) ??
-      searchQueryFromMapsUrl(input);
-  }
-  if (!title) return null;
-
-  let description = clean(meta.ogDescription) ?? clean(meta.metaDescription);
-  if (description && GENERIC_MAPS_DESCRIPTION.test(description)) description = null;
+  const place = await placeFromMapsLink(input);
+  if (!place) return null;
   // Keep the link as shared (e.g. the short maps.app.goo.gl one) rather than the long redirect target.
-  return {
-    url: input.toString(),
-    title,
-    description: description ? truncate(description, MAX_DESCRIPTION_LENGTH) : null,
-    genres: [],
-    suggestedType: 'place',
-  };
+  return { url: input.toString(), title: place, description: null, genres: [], suggestedType: 'place' };
 }
