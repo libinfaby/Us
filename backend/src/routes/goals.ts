@@ -148,8 +148,8 @@ goalsRoutes.post('/', async (c) => {
     notifyPartner(
       c.env,
       c.var.username,
-      'New savings goal 🎯',
-      `${c.var.username} started saving for ${emoji ? `${emoji} ` : ''}${name} (${formatRupees(body.targetCents)})`,
+      'New savings goal',
+      `${c.var.username} started saving for ${name} (${formatRupees(body.targetCents)})`,
       { route: 'goals' },
     ),
   );
@@ -228,11 +228,11 @@ goalsRoutes.post('/:id/contributions', async (c) => {
   }
   await c.env.DB.batch(statements);
 
-  const label = `${goal.emoji ? `${goal.emoji} ` : ''}${goal.name}`;
+  const label = goal.name;
   const progress = `(${formatRupees(newSaved)} / ${formatRupees(goal.targetCents)})`;
   if (justReached) {
     c.executionCtx.waitUntil(
-      notifyBoth(c.env, 'Goal reached 🎉', `you reached ${label} - ${formatRupees(newSaved)} saved!`, { route: 'goals' }),
+      notifyBoth(c.env, 'Goal reached', `you reached ${label} - ${formatRupees(newSaved)} saved!`, { route: 'goals' }),
     );
   } else {
     const action = amountCents > 0 ? 'added' : 'took out';

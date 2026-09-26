@@ -110,7 +110,7 @@ datesRoutes.post('/', async (c) => {
 
   const label = fields.kind === 'countdown' ? 'a countdown' : 'a date to remember';
   c.executionCtx.waitUntil(
-    notifyPartner(c.env, c.var.username, 'New date 📅', `${c.var.username} added ${label}: ${fields.title}`, {
+    notifyPartner(c.env, c.var.username, 'New date', `${c.var.username} added ${label}: ${fields.title}`, {
       route: 'dates',
     }),
   );

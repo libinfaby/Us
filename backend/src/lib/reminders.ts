@@ -17,19 +17,19 @@ export async function runDailyReminders(env: Env): Promise<void> {
   const sends: Promise<void>[] = [];
   for (const row of results) {
     try {
-      const label = row.emoji ? `${row.emoji} ${row.title}` : row.title;
+      const label = row.title;
       if (row.kind === 'countdown') {
         const daysUntil = daysBetween(today, row.date);
         if (daysUntil === 1) {
-          sends.push(notifyBoth(env, 'Tomorrow! ⏳', `tomorrow: ${label}!`, { route: 'dates' }));
+          sends.push(notifyBoth(env, 'Tomorrow!', `tomorrow: ${label}!`, { route: 'dates' }));
         } else if (daysUntil === 0) {
-          sends.push(notifyBoth(env, "Today's the day 🎉", `today's the day: ${label}`, { route: 'dates' }));
+          sends.push(notifyBoth(env, "Today's the day", `today's the day: ${label}`, { route: 'dates' }));
         }
       } else {
         const next = nextAnniversary(row.date, today);
         if (next.date === today && next.years >= 1) {
           const years = next.years === 1 ? '1 year' : `${next.years} years`;
-          sends.push(notifyBoth(env, 'Happy anniversary 💕', `${years} since ${label} 💕`, { route: 'dates' }));
+          sends.push(notifyBoth(env, 'Happy anniversary', `${years} since ${label}`, { route: 'dates' }));
         }
       }
     } catch (err) {

@@ -2,6 +2,19 @@ import { USERNAMES, type Username } from './users';
 import { sendFcmMessage } from './fcm';
 import type { Env } from '../types';
 
+// Pictographs plus the joiners, variation selectors, skin tones, flag letters and
+// keycap marks that combine with them into a single emoji.
+const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}‍︎️⃣]/gu;
+
+/** Push text has no emojis, and double quotes become single quotes. */
+function cleanPushText(text: string): string {
+  return text
+    .replace(EMOJI, '')
+    .replace(/["“”]/g, "'")
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 /**
  * Fire-and-forget: looks up [target]'s registered device and pushes to it.
  * Never throws - a push failure must never break the request that triggered
@@ -21,7 +34,7 @@ export async function notifyUser(
       .first<{ fcm_token: string }>();
     if (!row) return;
 
-    const result = await sendFcmMessage(env.FCM_SERVICE_ACCOUNT_JSON, row.fcm_token, title, body, data);
+    const result = await sendFcmMessage(env.FCM_SERVICE_ACCOUNT_JSON, row.fcm_token, cleanPushText(title), cleanPushText(body), data);
     if (!result.ok && result.invalidToken) {
       await env.DB.prepare('DELETE FROM device_tokens WHERE username = ?').bind(target).run();
     } else if (!result.ok) {
