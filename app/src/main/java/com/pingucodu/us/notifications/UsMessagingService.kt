@@ -52,6 +52,8 @@ class UsMessagingService : FirebaseMessagingService() {
             .setColor(ContextCompat.getColor(this, R.color.notification_accent))
             .setContentTitle(title)
             .setContentText(body)
+            // Multi-line nudges show in full when the notification is expanded.
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()

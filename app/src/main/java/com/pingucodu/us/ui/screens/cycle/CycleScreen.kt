@@ -61,6 +61,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.CycleLogDto
 import com.pingucodu.us.data.network.CycleObservationDto
 import com.pingucodu.us.data.network.CycleStatusDto
+import com.pingucodu.us.ui.components.ErrorBanner
 import com.pingucodu.us.ui.theme.BorderWidth
 import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.DescriptionGrey
@@ -125,7 +126,7 @@ fun CycleScreen(modifier: Modifier = Modifier, viewModel: CycleViewModel = hiltV
 
             if (uiState.errorMessage != null) {
                 Spacer(Modifier.height(10.dp))
-                Text(uiState.errorMessage!!, color = Coral, style = MaterialTheme.typography.bodySmall)
+                ErrorBanner(uiState.errorMessage!!)
             }
 
             if (uiState.canLog && uiState.status?.irregularityMessage != null) {
@@ -779,7 +780,7 @@ private fun ObservationInputCard(
         )
         Spacer(Modifier.height(12.dp))
         if (errorMessage != null) {
-            Text(errorMessage, color = Coral, style = MaterialTheme.typography.bodySmall)
+            ErrorBanner(errorMessage)
             Spacer(Modifier.height(8.dp))
         }
         Box(
@@ -1060,7 +1061,7 @@ private fun AddLogDialog(
 
                     val error = dialogError ?: "pick a flow, a tag, or add a note".takeIf { showEmptyError && isEmpty }
                     if (error != null) {
-                        Text(error, color = Coral, style = MaterialTheme.typography.bodyMedium)
+                        ErrorBanner(error)
                         Spacer(Modifier.height(12.dp))
                     }
 

@@ -7,8 +7,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,13 +39,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.SpecialDateDto
 import com.pingucodu.us.data.network.SpecialDateRequest
 import com.pingucodu.us.ui.components.DateField
+import com.pingucodu.us.ui.components.ErrorBanner
 import com.pingucodu.us.ui.components.NeoBottomSheet
 import com.pingucodu.us.ui.components.NeoChoiceChip
 import com.pingucodu.us.ui.components.NeoDatePickerDialog
@@ -54,7 +55,6 @@ import com.pingucodu.us.ui.components.SectionLabel
 import com.pingucodu.us.ui.components.SubmitButton
 import com.pingucodu.us.ui.components.clickableNoRipple
 import com.pingucodu.us.ui.theme.BorderWidth
-import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.DescriptionGrey
 import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.NeoConfirmDialog
@@ -62,37 +62,79 @@ import com.pingucodu.us.ui.theme.Pink
 import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.SkeletonCard
 import com.pingucodu.us.ui.theme.Teal
-import com.pingucodu.us.ui.theme.YellowSoft
 import com.pingucodu.us.ui.theme.hardShadow
 import java.time.LocalDate
+import java.time.Period
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 private val CardShape = RoundedCornerShape(16.dp)
 private val DATE_LABEL = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.ENGLISH)
-private val EMOJI_PRESETS = listOf("🏖️", "✈️", "🎂", "💕", "🎉", "🎬", "🎵", "🍕", "🏔️", "💍", "🐧", "⭐")
+/**
+ * How long ago a milestone was (e.g. 1y 4m 12d) and when its next monthly anniversary falls,
+ * or null when [SpecialDateDto.date] doesn't parse or is still ahead.
+ */
+data class MilestoneProgress(val years: Int, val months: Int, val days: Int, val nextMonths: Int, val daysUntilNext: Int)
 
-/** Big number + unit shown in a date's badge, e.g. ("37", "days") or ("3", "yrs"). */
-fun dateBadge(date: SpecialDateDto): Pair<String, String> = when {
-    date.kind == KIND_MILESTONE && date.daysUntilNext == 0 -> "🎉" to "today"
-    date.kind == KIND_MILESTONE -> (date.years ?: 0).toString() to if (date.years == 1) "yr" else "yrs"
-    date.isPast -> "✓" to "done"
-    date.daysUntil == 0 -> "🎉" to "today"
-    else -> (date.daysUntil ?: 0).toString() to if (date.daysUntil == 1) "day" else "days"
+fun milestoneProgress(date: SpecialDateDto, today: LocalDate = LocalDate.now()): MilestoneProgress? {
+    val start = runCatching { LocalDate.parse(date.date) }.getOrNull() ?: return null
+    if (start.isAfter(today)) return null
+    val elapsed = Period.between(start, today)
+    // plusMonths clamps to the month's end (31 jan + 1 month = 28 feb), so step until we land on or after today.
+    var nextMonths = elapsed.toTotalMonths().toInt()
+    while (start.plusMonths(nextMonths.toLong()).isBefore(today)) nextMonths++
+    val daysUntilNext = ChronoUnit.DAYS.between(today, start.plusMonths(nextMonths.toLong())).toInt()
+    return MilestoneProgress(elapsed.years, elapsed.months, elapsed.days, nextMonths, daysUntilNext)
 }
 
-/** One-line detail under a date's title, e.g. "sat 27 sep 2026 · tomorrow". */
+/** Soonest monthly anniversary first. */
+fun List<SpecialDateDto>.sortedByNextMonthlyAnniversary(): List<SpecialDateDto> =
+    sortedBy { milestoneProgress(it)?.daysUntilNext ?: Int.MAX_VALUE }
+
+/** "1 year 5 months", "2 years", "7 months". */
+private fun monthsLabel(totalMonths: Int): String {
+    val years = totalMonths / 12
+    val months = totalMonths % 12
+    return listOfNotNull(
+        years.takeIf { it > 0 }?.let { "$it ${if (it == 1) "year" else "years"}" },
+        months.takeIf { it > 0 }?.let { "$it ${if (it == 1) "month" else "months"}" },
+    ).joinToString(" ")
+}
+
+/** Big number + unit shown in a date's badge, e.g. ("37", "days") or ("2m 10d", "ago"); the unit is empty for "today". */
+fun dateBadge(date: SpecialDateDto): Pair<String, String> {
+    if (date.kind == KIND_MILESTONE) {
+        val progress = milestoneProgress(date)
+            ?: return (date.years ?: 0).toString() to if (date.years == 1) "yr" else "yrs"
+        return when {
+            progress.daysUntilNext == 0 -> "today" to ""
+            else -> listOfNotNull(
+                progress.years.takeIf { it > 0 }?.let { "${it}y" },
+                progress.months.takeIf { it > 0 }?.let { "${it}m" },
+                progress.days.takeIf { it > 0 }?.let { "${it}d" },
+            ).joinToString(" ") to "ago"
+        }
+    }
+    return when {
+        date.isPast -> "✓" to "done"
+        date.daysUntil == 0 -> "today" to ""
+        else -> (date.daysUntil ?: 0).toString() to if (date.daysUntil == 1) "day" else "days"
+    }
+}
+
+/** One-line detail under a date's title, e.g. "sat 27 sep 2026 · tomorrow" or "since … · 1 year 5 months in 12 days". */
 fun dateSubtitle(date: SpecialDateDto): String {
     val formatted = runCatching { LocalDate.parse(date.date).format(DATE_LABEL).lowercase() }.getOrDefault(date.date)
     return when {
         date.kind == KIND_MILESTONE -> {
-            val next = date.daysUntilNext
-            val nextYears = (date.years ?: 0) + if (next == 0) 0 else 1
-            val yearsLabel = "$nextYears ${if (nextYears == 1) "year" else "years"}"
-            when (next) {
-                0 -> "$yearsLabel today 💕"
-                1 -> "since $formatted · $yearsLabel tomorrow"
-                else -> "since $formatted · $yearsLabel in $next days"
+            val progress = milestoneProgress(date) ?: return formatted
+            val label = monthsLabel(progress.nextMonths)
+            when {
+                progress.nextMonths == 0 -> "$formatted · today"
+                progress.daysUntilNext == 0 -> "$label today"
+                progress.daysUntilNext == 1 -> "since $formatted · $label tomorrow"
+                else -> "since $formatted · $label in ${progress.daysUntilNext} days"
             }
         }
         date.isPast -> formatted
@@ -134,7 +176,7 @@ fun DatesScreen(onBack: () -> Unit, modifier: Modifier = Modifier, viewModel: Da
                 Spacer(Modifier.height(20.dp))
 
                 if (uiState.errorMessage != null) {
-                    Text(uiState.errorMessage!!, color = Coral, style = MaterialTheme.typography.bodySmall)
+                    ErrorBanner(uiState.errorMessage!!)
                     Spacer(Modifier.height(12.dp))
                 }
 
@@ -148,7 +190,6 @@ fun DatesScreen(onBack: () -> Unit, modifier: Modifier = Modifier, viewModel: Da
                         label = "coming up",
                         emptyText = "nothing to count down to yet - add a trip, a concert, a date night.",
                         dates = uiState.upcoming,
-                        onAdd = { viewModel.openAddForm(KIND_COUNTDOWN) },
                         onEdit = viewModel::openEditForm,
                         onDelete = { toDelete = it },
                     )
@@ -157,7 +198,6 @@ fun DatesScreen(onBack: () -> Unit, modifier: Modifier = Modifier, viewModel: Da
                         label = "our dates",
                         emptyText = "first date, first trip, the day you moved in - we'll remind you every year.",
                         dates = uiState.milestones,
-                        onAdd = { viewModel.openAddForm(KIND_MILESTONE) },
                         onEdit = viewModel::openEditForm,
                         onDelete = { toDelete = it },
                     )
@@ -239,15 +279,10 @@ private fun DateSection(
     label: String,
     emptyText: String,
     dates: List<SpecialDateDto>,
-    onAdd: () -> Unit,
     onEdit: (SpecialDateDto) -> Unit,
     onDelete: (SpecialDateDto) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        SectionLabel(label)
-        Spacer(Modifier.weight(1f))
-        Text("+ add", style = PinguCoduType.monoLabel, color = Ink, modifier = Modifier.clickableNoRipple(onAdd))
-    }
+    SectionLabel(label)
     Spacer(Modifier.height(10.dp))
     if (dates.isEmpty()) {
         Text(emptyText, style = MaterialTheme.typography.bodySmall, color = DescriptionGrey)
@@ -293,14 +328,11 @@ fun DateCard(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(number, style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center)
-            Text(unit, style = PinguCoduType.monoLabel)
+            if (unit.isNotEmpty()) Text(unit, style = PinguCoduType.monoLabel)
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                listOfNotNull(date.emoji, date.title).joinToString(" "),
-                style = MaterialTheme.typography.titleMedium,
-            )
+            Text(date.title, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(2.dp))
             Text(dateSubtitle(date), style = MaterialTheme.typography.bodySmall, color = DescriptionGrey)
         }
@@ -318,8 +350,8 @@ private fun DateFormSheet(
 ) {
     val today = remember { LocalDate.now() }
     var kind by remember { mutableStateOf(editing?.kind ?: initialKind) }
-    var title by remember { mutableStateOf(editing?.title ?: "") }
-    var emoji by remember { mutableStateOf(editing?.emoji) }
+    // Older dates kept their emoji separately - fold it into the title so saving doesn't lose it.
+    var title by remember { mutableStateOf(editing?.let { listOfNotNull(it.emoji, it.title).joinToString(" ") } ?: "") }
     var date by remember { mutableStateOf(editing?.date) }
     var showPicker by remember { mutableStateOf(false) }
 
@@ -337,9 +369,9 @@ private fun DateFormSheet(
 
     NeoBottomSheet(title = if (editing == null) "new date" else "edit date", onDismiss = onDismiss) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            NeoChoiceChip(label = "⏳ countdown", selected = kind == KIND_COUNTDOWN, onClick = { kind = KIND_COUNTDOWN })
+            NeoChoiceChip(label = "countdown", selected = kind == KIND_COUNTDOWN, onClick = { kind = KIND_COUNTDOWN })
             NeoChoiceChip(
-                label = "💕 remember yearly",
+                label = "milestone",
                 selected = kind == KIND_MILESTONE,
                 onClick = { kind = KIND_MILESTONE },
                 selectedColor = Pink,
@@ -364,26 +396,9 @@ private fun DateFormSheet(
             onValueChange = { title = it },
             placeholder = if (kind == KIND_COUNTDOWN) "goa trip" else "our first date",
             modifier = Modifier.fillMaxWidth(),
+            textStyle = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, lineHeight = 20.sp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
         )
-        Spacer(Modifier.height(16.dp))
-
-        SectionLabel("emoji - optional")
-        Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            EMOJI_PRESETS.forEach { preset ->
-                val selected = emoji == preset
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .border(2.dp, Ink, RoundedCornerShape(12.dp))
-                        .background(if (selected) YellowSoft else Color.White, RoundedCornerShape(12.dp))
-                        .clickableNoRipple { emoji = if (selected) null else preset },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(preset, style = MaterialTheme.typography.titleLarge)
-                }
-            }
-        }
         Spacer(Modifier.height(16.dp))
 
         SectionLabel("when")
@@ -397,17 +412,18 @@ private fun DateFormSheet(
         )
         if (dateProblem != null) {
             Spacer(Modifier.height(8.dp))
-            Text(dateProblem, color = Coral, style = MaterialTheme.typography.bodySmall)
+            ErrorBanner(dateProblem)
         }
         Spacer(Modifier.height(20.dp))
 
         if (formError != null) {
-            Text(formError, color = Coral, style = MaterialTheme.typography.bodyMedium)
+            ErrorBanner(formError)
             Spacer(Modifier.height(12.dp))
         }
 
         SubmitButton(label = if (editing == null) "save it" else "save changes", enabled = isValid && !isSubmitting) {
-            onSubmit(SpecialDateRequest(kind = kind, title = title.trim(), emoji = emoji ?: "", date = date))
+            // Empty emoji clears an older date's separate emoji, now that it lives in the title.
+            onSubmit(SpecialDateRequest(kind = kind, title = title.trim(), emoji = "", date = date))
         }
     }
 

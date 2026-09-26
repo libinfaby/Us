@@ -56,6 +56,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import com.pingucodu.us.ui.theme.BorderWidth
+import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.Pink
 import com.pingucodu.us.ui.theme.PinkTint
@@ -116,6 +117,20 @@ fun NeoChoiceChip(label: String, selected: Boolean, onClick: () -> Unit, selecte
     }
 }
 
+/** Small outlined pill for card actions like edit / delete. */
+@Composable
+fun PillActionButton(label: String, background: Color, contentColor: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .border(1.5.dp, Ink, RoundedCornerShape(50))
+            .background(background, RoundedCornerShape(50))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = contentColor)
+    }
+}
+
 @Composable
 fun NeoField(
     value: String,
@@ -167,6 +182,22 @@ fun SubmitButton(label: String, enabled: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(label, style = MaterialTheme.typography.headlineLarge, color = Color.White)
+    }
+}
+
+/** The one way errors are shown across the app: a Coral card with an Ink border and bold Ink text. */
+@Composable
+fun ErrorBanner(message: String, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .hardShadow(shape, offsetX = 3.dp, offsetY = 3.dp)
+            .background(Coral, shape)
+            .border(BorderWidth, Ink, shape)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(message, color = Ink, style = MaterialTheme.typography.bodySmall.copy(fontWeight = MaterialTheme.typography.titleMedium.fontWeight))
     }
 }
 

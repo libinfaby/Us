@@ -72,8 +72,8 @@ import androidx.core.view.WindowCompat
 import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.data.network.ExpenseRequest
 import com.pingucodu.us.data.network.HangoutDto
+import com.pingucodu.us.ui.components.ErrorBanner
 import com.pingucodu.us.ui.theme.BorderWidth
-import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.Pink
@@ -515,7 +515,7 @@ fun ExpenseFormDialog(
                     Spacer(Modifier.height(22.dp))
 
                     if (dialogError != null) {
-                        Text(dialogError, color = Coral, style = MaterialTheme.typography.bodyMedium)
+                        ErrorBanner(dialogError)
                         Spacer(Modifier.height(12.dp))
                     }
 

@@ -88,15 +88,16 @@ import com.pingucodu.us.data.network.LinkPreviewDto
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import com.pingucodu.us.ui.components.DateField
+import com.pingucodu.us.ui.components.ErrorBanner
 import com.pingucodu.us.ui.components.NeoBottomSheet
 import com.pingucodu.us.ui.components.NeoChoiceChip
+import com.pingucodu.us.ui.components.PillActionButton
 import com.pingucodu.us.ui.components.NeoDatePickerDialog
 import com.pingucodu.us.ui.components.NeoField
 import com.pingucodu.us.ui.components.SectionLabel
 import com.pingucodu.us.ui.components.SubmitButton
 import com.pingucodu.us.ui.components.clickableNoRipple
 import com.pingucodu.us.ui.theme.BorderWidth
-import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.DashedDivider
 import com.pingucodu.us.ui.theme.DescriptionGrey
 import com.pingucodu.us.ui.theme.Ink
@@ -167,10 +168,8 @@ fun StashScreen(
             }
 
             if (uiState.errorMessage != null) {
-                Text(
+                ErrorBanner(
                     uiState.errorMessage!!,
-                    color = Coral,
-                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
             }
@@ -624,20 +623,6 @@ private fun TagChip(tag: String) {
     }
 }
 
-@Composable
-private fun PillActionButton(label: String, background: Color, contentColor: Color, onClick: () -> Unit) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Box(
-        modifier = Modifier
-            .border(1.5.dp, Ink, RoundedCornerShape(50))
-            .background(background, RoundedCornerShape(50))
-            .combinedClickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = contentColor)
-    }
-}
-
 // ---------- hangouts ----------
 
 private fun formatHangoutDate(date: String): String? = runCatching { LocalDate.parse(date) }.getOrNull()?.let {
@@ -990,11 +975,15 @@ private fun StashItemFormDialog(
                 )
             }
             Spacer(Modifier.height(6.dp))
-            Text(
-                previewError ?: "optional - we'll fill in the title and description for you",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (previewError != null) Coral else DescriptionGrey,
-            )
+            if (previewError != null) {
+                ErrorBanner(previewError)
+            } else {
+                Text(
+                    "optional - we'll fill in the title and description for you",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = DescriptionGrey,
+                )
+            }
             Spacer(Modifier.height(14.dp))
         }
 
@@ -1057,7 +1046,7 @@ private fun StashItemFormDialog(
         Spacer(Modifier.height(20.dp))
 
         if (dialogError != null) {
-            Text(dialogError, color = Coral, style = MaterialTheme.typography.bodyMedium)
+            ErrorBanner(dialogError)
             Spacer(Modifier.height(12.dp))
         }
 
@@ -1160,15 +1149,20 @@ private fun HangoutFormDialog(
     dialogError: String?,
     isSubmitting: Boolean,
     onDismiss: () -> Unit,
-    onSubmit: (name: String, startDate: String?, endDate: String?) -> Unit,
+    onSubmit: (name: String, startDate: String?, endDate: String?, countdownDate: String?) -> Unit,
 ) {
     var name by remember { mutableStateOf(hangout?.name ?: "") }
+    var addToCountdown by remember { mutableStateOf(false) }
     var startDate by remember { mutableStateOf(hangout?.startDate) }
     var endDate by remember { mutableStateOf(hangout?.endDate) }
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
 
     val isValid = name.isNotBlank()
+    // Only a new hangout that hasn't started yet can become a countdown - countdowns need today or later.
+    val countdownDate = (startDate ?: endDate)
+        ?.takeIf { hangout == null }
+        ?.takeIf { date -> runCatching { !LocalDate.parse(date).isBefore(LocalDate.now()) }.getOrDefault(false) }
 
     NeoBottomSheet(title = if (hangout == null) "new hangout" else "edit hangout", onDismiss = onDismiss) {
         Text(
@@ -1196,13 +1190,29 @@ private fun HangoutFormDialog(
         }
         Spacer(Modifier.height(20.dp))
 
+        if (countdownDate != null) {
+            SectionLabel("add to countdown?")
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NeoChoiceChip(label = "yes", selected = addToCountdown, onClick = { addToCountdown = true })
+                NeoChoiceChip(label = "no", selected = !addToCountdown, onClick = { addToCountdown = false })
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "shows up in our dates, and we'll both get a push the day before and on the day.",
+                style = MaterialTheme.typography.bodySmall,
+                color = DescriptionGrey,
+            )
+            Spacer(Modifier.height(20.dp))
+        }
+
         if (dialogError != null) {
-            Text(dialogError, color = Coral, style = MaterialTheme.typography.bodyMedium)
+            ErrorBanner(dialogError)
             Spacer(Modifier.height(12.dp))
         }
 
         SubmitButton(label = if (hangout == null) "create hangout" else "save changes", enabled = isValid && !isSubmitting) {
-            onSubmit(name.trim(), startDate, endDate)
+            onSubmit(name.trim(), startDate, endDate, countdownDate?.takeIf { addToCountdown })
         }
     }
 
@@ -1244,7 +1254,7 @@ private fun MemoryFormDialog(
         Spacer(Modifier.height(20.dp))
 
         if (dialogError != null) {
-            Text(dialogError, color = Coral, style = MaterialTheme.typography.bodyMedium)
+            ErrorBanner(dialogError)
             Spacer(Modifier.height(12.dp))
         }
 

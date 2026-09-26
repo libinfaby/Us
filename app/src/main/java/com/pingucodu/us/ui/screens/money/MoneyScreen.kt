@@ -47,8 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.ExpenseDto
 import com.pingucodu.us.data.network.HangoutDto
+import com.pingucodu.us.ui.components.ErrorBanner
 import com.pingucodu.us.ui.theme.BorderWidth
-import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.DashedDivider
 import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.Pink
@@ -114,7 +114,9 @@ private fun ExpensesContent(modifier: Modifier = Modifier, viewModel: MoneyViewM
         viewModel.refreshOnEntry()
     }
 
-    Box(modifier = modifier.fillMaxSize().background(PinkTint)) {
+    // No background here - the parent Column already paints PinkTint, and painting it again would
+    // cover the bottom of the selected section pill's hard shadow.
+    Box(modifier = modifier.fillMaxSize()) {
         PullToRefreshBox(
             isRefreshing = uiState.isLoading && uiState.expenses.isNotEmpty(),
             onRefresh = { viewModel.refresh() },
@@ -143,10 +145,8 @@ private fun ExpensesContent(modifier: Modifier = Modifier, viewModel: MoneyViewM
             Spacer(Modifier.height(10.dp))
 
             if (uiState.errorMessage != null) {
-                Text(
+                ErrorBanner(
                     uiState.errorMessage!!,
-                    color = Coral,
-                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
             }

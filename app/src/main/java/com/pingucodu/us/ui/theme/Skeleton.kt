@@ -231,6 +231,34 @@ fun SkeletonExpenseCard(modifier: Modifier = Modifier) {
     }
 }
 
+/** Mirrors GoalsContent's GoalCard: name/percent row, progress bar, amounts, then the action rows. */
+@Composable
+fun SkeletonGoalCard(modifier: Modifier = Modifier) {
+    SkeletonFrame(modifier = modifier.fillMaxWidth(), shape = ExpenseCardShape) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SkeletonBar(Modifier.width(150.dp).height(20.dp))
+                Box(Modifier.weight(1f))
+                SkeletonBar(Modifier.width(48.dp).height(22.dp), shape = RoundedCornerShape(50))
+            }
+            Box(Modifier.height(12.dp))
+            SkeletonBar(Modifier.fillMaxWidth().height(18.dp), shape = RoundedCornerShape(50))
+            Box(Modifier.height(10.dp))
+            SkeletonBar(Modifier.width(140.dp).height(16.dp))
+            Box(Modifier.height(6.dp))
+            SkeletonBar(Modifier.width(110.dp).height(11.dp))
+            Box(Modifier.height(14.dp))
+            SkeletonBar(Modifier.width(120.dp).height(40.dp), shape = RoundedCornerShape(12.dp))
+            Box(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                SkeletonBar(Modifier.width(62.dp).height(30.dp), shape = RoundedCornerShape(50))
+                SkeletonBar(Modifier.width(44.dp).height(30.dp), shape = RoundedCornerShape(50))
+                SkeletonBar(Modifier.width(56.dp).height(30.dp), shape = RoundedCornerShape(50))
+            }
+        }
+    }
+}
+
 // ---------- Cycle ----------
 
 private val CycleHeaderShape = RoundedCornerShape(18.dp)

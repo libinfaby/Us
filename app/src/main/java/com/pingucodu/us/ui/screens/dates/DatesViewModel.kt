@@ -29,7 +29,7 @@ data class DatesUiState(
     val isSubmitting: Boolean = false,
 ) {
     val upcoming: List<SpecialDateDto> get() = dates.filter { it.kind == KIND_COUNTDOWN && !it.isPast }
-    val milestones: List<SpecialDateDto> get() = dates.filter { it.kind == KIND_MILESTONE }
+    val milestones: List<SpecialDateDto> get() = dates.filter { it.kind == KIND_MILESTONE }.sortedByNextMonthlyAnniversary()
     val past: List<SpecialDateDto> get() = dates.filter { it.kind == KIND_COUNTDOWN && it.isPast }
 }
 

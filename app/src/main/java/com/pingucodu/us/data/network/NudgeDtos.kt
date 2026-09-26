@@ -10,9 +10,6 @@ data class NudgeDto(
     val createdAt: String,
 )
 
-/** [message] null = let the server pick a random cute one. */
+/** Body for both sending (POST) and editing (PATCH) a note. */
 @Serializable
-data class SendNudgeRequest(val message: String? = null)
-
-@Serializable
-data class LatestNudgeResponse(val nudge: NudgeDto? = null)
+data class NudgeMessageRequest(val message: String)

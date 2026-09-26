@@ -52,6 +52,14 @@ class GoalsViewModel @Inject constructor(
         }
     }
 
+    /** Called when the goals section (re)enters composition - drops the stale list first so the
+     * screen shows skeleton cards instead of the pull-to-refresh spinner, which should only
+     * appear when the user actually pulls down to refresh. */
+    fun refreshOnEntry() {
+        _uiState.update { it.copy(goals = emptyList(), hasLoadedOnce = false) }
+        refresh()
+    }
+
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }

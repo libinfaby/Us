@@ -49,9 +49,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.ui.auth.AuthStatus
 import com.pingucodu.us.ui.auth.AuthViewModel
+import com.pingucodu.us.ui.components.ErrorBanner
 import com.pingucodu.us.ui.settings.SettingsViewModel
 import com.pingucodu.us.ui.theme.BorderWidth
-import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.DashedDivider
 import com.pingucodu.us.ui.theme.DescriptionGrey
 import com.pingucodu.us.ui.theme.FontScaleLevel
@@ -284,7 +284,7 @@ private fun ChangePinSection(viewModel: AuthViewModel) {
 
     val errorText = uiState.errorMessage ?: if (mismatch) "new pin and confirmation don't match" else null
     if (errorText != null) {
-        Text(errorText, color = Coral, style = MaterialTheme.typography.bodySmall)
+        ErrorBanner(errorText)
         Spacer(Modifier.height(10.dp))
     }
     if (uiState.success) {

@@ -44,8 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.ui.auth.AuthViewModel
+import com.pingucodu.us.ui.components.ErrorBanner
 import com.pingucodu.us.ui.theme.BorderWidth
-import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.DescriptionGrey
 import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.Pink
@@ -141,16 +141,7 @@ fun LoginScreen(modifier: Modifier = Modifier, viewModel: AuthViewModel = hiltVi
 
         if (errorMessage != null) {
             Spacer(Modifier.height(14.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .hardShadow(RoundedCornerShape(12.dp), offsetX = 3.dp, offsetY = 3.dp)
-                    .background(Coral, RoundedCornerShape(12.dp))
-                    .border(BorderWidth, Ink, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-            ) {
-                Text(errorMessage, color = Ink, style = MaterialTheme.typography.bodySmall.copy(fontWeight = MaterialTheme.typography.titleMedium.fontWeight))
-            }
+            ErrorBanner(errorMessage)
         }
         Spacer(Modifier.height(20.dp))
 

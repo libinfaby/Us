@@ -3,6 +3,8 @@ package com.pingucodu.us.ui.screens.stash
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pingucodu.us.data.auth.AuthRepository
+import com.pingucodu.us.data.dates.DatesRepository
+import com.pingucodu.us.data.dates.SaveDateResult
 import com.pingucodu.us.data.money.AddMemoryResult
 import com.pingucodu.us.data.money.CreateHangoutResult
 import com.pingucodu.us.data.money.DeleteHangoutResult
@@ -14,6 +16,7 @@ import com.pingucodu.us.data.money.UpdateMemoryResult
 import com.pingucodu.us.data.network.HangoutDto
 import com.pingucodu.us.data.network.HangoutMemoryDto
 import com.pingucodu.us.data.network.LinkPreviewDto
+import com.pingucodu.us.data.network.SpecialDateRequest
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import com.pingucodu.us.data.stash.AddStashItemResult
@@ -24,6 +27,7 @@ import com.pingucodu.us.data.stash.StashRepository
 import com.pingucodu.us.data.stash.StashTagsResult
 import com.pingucodu.us.data.stash.ToggleStashItemResult
 import com.pingucodu.us.data.stash.UpdateStashItemResult
+import com.pingucodu.us.ui.screens.dates.KIND_COUNTDOWN
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -100,6 +104,7 @@ data class StashUiState(
 class StashViewModel @Inject constructor(
     private val stashRepository: StashRepository,
     private val expenseRepository: ExpenseRepository,
+    private val datesRepository: DatesRepository,
     authRepository: AuthRepository,
 ) : ViewModel() {
 
@@ -389,16 +394,22 @@ class StashViewModel @Inject constructor(
         _uiState.update { it.copy(showHangoutDialog = false, editingHangout = null, hangoutDialogError = null) }
     }
 
-    fun submitHangout(name: String, startDate: String?, endDate: String?) {
+    /** [countdownDate] non-null = also add a countdown to that date once the new hangout is saved. */
+    fun submitHangout(name: String, startDate: String?, endDate: String?, countdownDate: String? = null) {
         val editing = _uiState.value.editingHangout
         viewModelScope.launch {
             _uiState.update { it.copy(isHangoutSubmitting = true, hangoutDialogError = null) }
             if (editing == null) {
                 when (val result = expenseRepository.createHangout(name, startDate, endDate)) {
                     is CreateHangoutResult.Success -> {
+                        val countdownError = countdownDate?.let { addCountdown(name, it) }
                         _uiState.update { it.copy(isHangoutSubmitting = false) }
                         dismissHangoutDialog()
                         refreshHangouts()
+                        // After the refresh, which clears errorMessage when it starts.
+                        if (countdownError != null) {
+                            _uiState.update { it.copy(errorMessage = "hangout saved, but the countdown wasn't: $countdownError") }
+                        }
                     }
                     is CreateHangoutResult.NetworkError ->
                         _uiState.update { it.copy(isHangoutSubmitting = false, hangoutDialogError = result.message) }
@@ -418,6 +429,14 @@ class StashViewModel @Inject constructor(
             }
         }
     }
+
+    /** Returns the error message, or null when the countdown was added. */
+    private suspend fun addCountdown(title: String, date: String): String? =
+        when (val result = datesRepository.saveDate(null, SpecialDateRequest(kind = KIND_COUNTDOWN, title = title, date = date))) {
+            is SaveDateResult.Success -> null
+            is SaveDateResult.ValidationError -> result.message
+            is SaveDateResult.NetworkError -> result.message
+        }
 
     fun deleteHangout(id: String) {
         viewModelScope.launch {

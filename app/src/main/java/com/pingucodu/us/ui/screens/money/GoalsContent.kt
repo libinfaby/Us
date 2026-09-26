@@ -7,7 +7,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -42,10 +41,12 @@ import com.pingucodu.us.data.network.GoalContributionDto
 import com.pingucodu.us.data.network.SavingsGoalDto
 import com.pingucodu.us.data.network.SavingsGoalRequest
 import com.pingucodu.us.ui.components.DateField
+import com.pingucodu.us.ui.components.ErrorBanner
 import com.pingucodu.us.ui.components.NeoBottomSheet
 import com.pingucodu.us.ui.components.NeoChoiceChip
 import com.pingucodu.us.ui.components.NeoDatePickerDialog
 import com.pingucodu.us.ui.components.NeoField
+import com.pingucodu.us.ui.components.PillActionButton
 import com.pingucodu.us.ui.components.SectionLabel
 import com.pingucodu.us.ui.components.SubmitButton
 import com.pingucodu.us.ui.components.clickableNoRipple
@@ -58,7 +59,7 @@ import com.pingucodu.us.ui.theme.Ink
 import com.pingucodu.us.ui.theme.NeoConfirmDialog
 import com.pingucodu.us.ui.theme.Pink
 import com.pingucodu.us.ui.theme.PinguCoduType
-import com.pingucodu.us.ui.theme.SkeletonCard
+import com.pingucodu.us.ui.theme.SkeletonGoalCard
 import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.YellowSoft
 import com.pingucodu.us.ui.theme.hardShadow
@@ -73,7 +74,6 @@ import kotlin.math.ceil
 
 private val GoalCardShape = RoundedCornerShape(18.dp)
 private val SHORT_DATE = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH)
-private val GOAL_EMOJIS = listOf("🏖️", "✈️", "🏠", "💍", "🎁", "🚗", "📱", "🐶", "🎓", "💰")
 private val QUICK_AMOUNTS = listOf(50_000L, 100_000L, 500_000L)
 
 /** Parses "2000", "2,000" or "2000.50" rupees into paise; null for anything else or ≤ 0. */
@@ -133,7 +133,7 @@ fun GoalsContent(modifier: Modifier = Modifier, viewModel: GoalsViewModel = hilt
     var contributionToDelete by remember { mutableStateOf<Pair<SavingsGoalDto, GoalContributionDto>?>(null) }
 
     LaunchedEffect(Unit) {
-        viewModel.refresh()
+        viewModel.refreshOnEntry()
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -149,13 +149,13 @@ fun GoalsContent(modifier: Modifier = Modifier, viewModel: GoalsViewModel = hilt
                     .padding(start = 20.dp, top = 16.dp, end = 20.dp),
             ) {
                 if (uiState.errorMessage != null) {
-                    Text(uiState.errorMessage!!, color = Coral, style = MaterialTheme.typography.bodySmall)
+                    ErrorBanner(uiState.errorMessage!!)
                     Spacer(Modifier.height(12.dp))
                 }
 
                 when {
                     uiState.isLoading && !uiState.hasLoadedOnce -> repeat(2) {
-                        SkeletonCard(contentHeight = 130.dp)
+                        SkeletonGoalCard()
                         Spacer(Modifier.height(16.dp))
                     }
                     uiState.goals.isEmpty() -> EmptyGoals(onAdd = viewModel::openAddGoal)
@@ -318,14 +318,14 @@ private fun GoalCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                listOfNotNull(goal.emoji, goal.name).joinToString(" "),
+                goal.name,
                 style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.weight(1f),
             )
             Box(
                 modifier = Modifier
                     .border(2.dp, Ink, RoundedCornerShape(50))
-                    .background(if (reached) Green else YellowSoft, RoundedCornerShape(50))
+                    .background(if (reached) Green else Teal, RoundedCornerShape(50))
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             ) {
                 Text(if (reached) "done!" else "$percent%", style = PinguCoduType.monoLabel)
@@ -351,23 +351,26 @@ private fun GoalCard(
             }
         }
         Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .hardShadow(RoundedCornerShape(12.dp), offsetX = 3.dp, offsetY = 3.dp)
-                    .border(BorderWidth, Ink, RoundedCornerShape(12.dp))
-                    .background(Ink, RoundedCornerShape(12.dp))
-                    .clickableNoRipple(onAddMoney)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-            ) {
-                Text("+ add money", style = MaterialTheme.typography.labelLarge, color = Color.White)
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                if (expanded) "hide ▴" else "history ▾",
-                style = PinguCoduType.monoLabel,
-                color = DescriptionGrey,
+        Box(
+            modifier = Modifier
+                .hardShadow(RoundedCornerShape(12.dp), offsetX = 3.dp, offsetY = 3.dp)
+                .border(BorderWidth, Ink, RoundedCornerShape(12.dp))
+                .background(Ink, RoundedCornerShape(12.dp))
+                .clickableNoRipple(onAddMoney)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+        ) {
+            Text("+ add money", style = MaterialTheme.typography.labelLarge, color = Color.White)
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+            PillActionButton(
+                label = if (expanded) "hide" else "history",
+                background = Color.White,
+                contentColor = Ink,
+                onClick = onToggleExpanded,
             )
+            PillActionButton(label = "edit", background = Color.White, contentColor = Ink, onClick = onEdit)
+            PillActionButton(label = "delete", background = Color.White, contentColor = Ink, onClick = onDelete)
         }
 
         if (expanded) {
@@ -383,11 +386,6 @@ private fun GoalCard(
                     isMine = contribution.username == currentUsername,
                     onDelete = { onDeleteContribution(contribution) },
                 )
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                Text("edit goal", style = PinguCoduType.monoLabel, modifier = Modifier.clickableNoRipple(onEdit))
-                Text("delete goal", style = PinguCoduType.monoLabel, color = Coral, modifier = Modifier.clickableNoRipple(onDelete))
             }
         }
     }
@@ -428,7 +426,6 @@ private fun GoalFormSheet(
     onSubmit: (SavingsGoalRequest) -> Unit,
 ) {
     var name by remember { mutableStateOf(editing?.name ?: "") }
-    var emoji by remember { mutableStateOf(editing?.emoji) }
     var target by remember { mutableStateOf(editing?.targetCents?.let(::centsToInput) ?: "") }
     var targetDate by remember { mutableStateOf(editing?.targetDate) }
     var showPicker by remember { mutableStateOf(false) }
@@ -439,26 +436,13 @@ private fun GoalFormSheet(
     NeoBottomSheet(title = if (editing == null) "new goal" else "edit goal", onDismiss = onDismiss) {
         SectionLabel("saving for")
         Spacer(Modifier.height(8.dp))
-        NeoField(value = name, onValueChange = { name = it }, placeholder = "goa trip fund", modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(16.dp))
-
-        SectionLabel("emoji - optional")
-        Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            GOAL_EMOJIS.forEach { preset ->
-                val selected = emoji == preset
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .border(2.dp, Ink, RoundedCornerShape(12.dp))
-                        .background(if (selected) YellowSoft else Color.White, RoundedCornerShape(12.dp))
-                        .clickableNoRipple { emoji = if (selected) null else preset },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(preset, style = MaterialTheme.typography.titleLarge)
-                }
-            }
-        }
+        NeoField(
+            value = name,
+            onValueChange = { name = it },
+            placeholder = "a trip you are planning",
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+        )
         Spacer(Modifier.height(16.dp))
 
         SectionLabel("target (₹)")
@@ -466,7 +450,7 @@ private fun GoalFormSheet(
         NeoField(
             value = target,
             onValueChange = { target = it },
-            placeholder = "50000",
+            placeholder = "0",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth(),
         )
@@ -484,7 +468,7 @@ private fun GoalFormSheet(
         Spacer(Modifier.height(20.dp))
 
         if (formError != null) {
-            Text(formError, color = Coral, style = MaterialTheme.typography.bodyMedium)
+            ErrorBanner(formError)
             Spacer(Modifier.height(12.dp))
         }
 
@@ -492,7 +476,8 @@ private fun GoalFormSheet(
             onSubmit(
                 SavingsGoalRequest(
                     name = name.trim(),
-                    emoji = emoji ?: "",
+                    // Goals no longer carry an emoji - "" clears any old one on save.
+                    emoji = "",
                     targetCents = targetCents,
                     targetDate = targetDate,
                 ),
@@ -530,14 +515,14 @@ private fun ContributionSheet(
 
     NeoBottomSheet(title = if (withdraw) "take out" else "add money", onDismiss = onDismiss) {
         Text(
-            "${listOfNotNull(goal.emoji, goal.name).joinToString(" ")} · ${formatRupees(goal.savedCents)} of ${formatRupees(goal.targetCents)}",
+            "${goal.name} · ${formatRupees(goal.savedCents)} of ${formatRupees(goal.targetCents)}",
             style = PinguCoduType.monoLabel,
             color = DescriptionGrey,
         )
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             NeoChoiceChip(label = "+ put in", selected = !withdraw, onClick = { withdraw = false })
-            NeoChoiceChip(label = "− take out", selected = withdraw, onClick = { withdraw = true }, selectedColor = Coral)
+            NeoChoiceChip(label = "− take out", selected = withdraw, onClick = { withdraw = true }, selectedColor = Pink)
         }
         Spacer(Modifier.height(16.dp))
 
@@ -546,7 +531,7 @@ private fun ContributionSheet(
         NeoField(
             value = amount,
             onValueChange = { amount = it },
-            placeholder = "2000",
+            placeholder = "0",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth(),
         )
@@ -563,21 +548,21 @@ private fun ContributionSheet(
         }
         if (tooMuch) {
             Spacer(Modifier.height(8.dp))
-            Text("only ${formatRupees(goal.savedCents)} saved so far", color = Coral, style = MaterialTheme.typography.bodySmall)
+            ErrorBanner("only ${formatRupees(goal.savedCents)} saved so far")
         }
         Spacer(Modifier.height(16.dp))
 
         SectionLabel("note - optional")
         Spacer(Modifier.height(8.dp))
-        NeoField(value = note, onValueChange = { note = it.take(120) }, placeholder = "salary day 💸", modifier = Modifier.fillMaxWidth())
+        NeoField(value = note, onValueChange = { note = it.take(120) }, placeholder = "add a note", modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(20.dp))
 
         if (formError != null) {
-            Text(formError, color = Coral, style = MaterialTheme.typography.bodyMedium)
+            ErrorBanner(formError)
             Spacer(Modifier.height(12.dp))
         }
 
-        SubmitButton(label = if (withdraw) "take it out" else "add it", enabled = isValid && !isSubmitting) {
+        SubmitButton(label = if (withdraw) "take out" else "add", enabled = isValid && !isSubmitting) {
             val cents = amountCents ?: return@SubmitButton
             onSubmit(if (withdraw) -cents else cents, note.trim().ifBlank { null })
         }

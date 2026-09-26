@@ -1,11 +1,8 @@
 package com.pingucodu.us.ui.screens.home
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,9 +46,8 @@ import com.pingucodu.us.data.network.NudgeDto
 import com.pingucodu.us.data.network.SavingsGoalDto
 import com.pingucodu.us.data.network.SpecialDateDto
 import com.pingucodu.us.ui.components.NeoBottomSheet
-import com.pingucodu.us.ui.components.NeoChoiceChip
 import com.pingucodu.us.ui.components.NeoField
-import com.pingucodu.us.ui.components.SectionLabel
+import com.pingucodu.us.ui.components.PillActionButton
 import com.pingucodu.us.ui.components.SubmitButton
 import com.pingucodu.us.ui.components.clickableNoRipple
 import com.pingucodu.us.ui.screens.dates.dateBadge
@@ -61,10 +57,9 @@ import com.pingucodu.us.ui.screens.money.goalProgress
 import com.pingucodu.us.ui.theme.BorderWidth
 import com.pingucodu.us.ui.theme.Coral
 import com.pingucodu.us.ui.theme.DescriptionGrey
-import com.pingucodu.us.ui.theme.Green
-import com.pingucodu.us.ui.theme.Orange
 import com.pingucodu.us.ui.theme.DashedDivider
 import com.pingucodu.us.ui.theme.Ink
+import com.pingucodu.us.ui.theme.NeoConfirmDialog
 import com.pingucodu.us.ui.theme.Pink
 import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.PinkTint
@@ -77,6 +72,11 @@ import com.pingucodu.us.ui.theme.YellowSoft
 import com.pingucodu.us.ui.theme.hardShadow
 import com.pingucodu.us.ui.util.LocalNameMask
 import com.pingucodu.us.ui.util.formatRupees
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private val CardShape = RoundedCornerShape(18.dp)
 private val TileShape = RoundedCornerShape(16.dp)
@@ -92,7 +92,9 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var showNudgePicker by remember { mutableStateOf(false) }
+    var showNoteSheet by remember { mutableStateOf(false) }
+    var editingNote by remember { mutableStateOf<NudgeDto?>(null) }
+    var noteToDelete by remember { mutableStateOf<NudgeDto?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.refreshOnEntry()
@@ -139,15 +141,6 @@ fun HomeScreen(
             )
             Spacer(Modifier.height(16.dp))
 
-            NudgeCard(
-                status = uiState.nudgeStatus,
-                latestNudge = uiState.latestNudge,
-                latestNudgeTimeLabel = uiState.latestNudgeTimeLabel,
-                onSend = { viewModel.sendNudge() },
-                onLongPress = { showNudgePicker = true },
-            )
-            Spacer(Modifier.height(16.dp))
-
             Row(
                 modifier = Modifier.height(IntrinsicSize.Max),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -169,6 +162,22 @@ fun HomeScreen(
                     onClick = onNavigateToStash,
                 )
             }
+            Spacer(Modifier.height(16.dp))
+
+            NudgeCard(
+                status = uiState.nudgeStatus,
+                notes = uiState.todayNotes,
+                currentUsername = uiState.username,
+                onSend = {
+                    editingNote = null
+                    showNoteSheet = true
+                },
+                onEdit = { note ->
+                    editingNote = note
+                    showNoteSheet = true
+                },
+                onDelete = { noteToDelete = it },
+            )
 
             uiState.topGoal?.let { goal ->
                 Spacer(Modifier.height(16.dp))
@@ -219,13 +228,29 @@ fun HomeScreen(
         }
     }
 
-    if (showNudgePicker) {
-        NudgePickerSheet(
-            onDismiss = { showNudgePicker = false },
-            onSend = { message ->
-                viewModel.sendNudge(message)
-                showNudgePicker = false
+    if (showNoteSheet) {
+        NoteSheet(
+            editing = editingNote,
+            onDismiss = { showNoteSheet = false },
+            onSubmit = { message ->
+                val editing = editingNote
+                if (editing == null) viewModel.sendNudge(message) else viewModel.editNote(editing.id, message)
+                showNoteSheet = false
             },
+        )
+    }
+
+    if (noteToDelete != null) {
+        val target = noteToDelete!!
+        NeoConfirmDialog(
+            title = "delete this note?",
+            message = "it goes away for both of you.",
+            confirmLabel = "delete",
+            onConfirm = {
+                viewModel.deleteNote(target.id)
+                noteToDelete = null
+            },
+            onDismiss = { noteToDelete = null },
         )
     }
 }
@@ -260,7 +285,15 @@ private fun DatesCard(nextCountdown: SpecialDateDto?, nextMilestone: SpecialDate
 @Composable
 private fun MiniDateRow(date: SpecialDateDto) {
     val (number, unit) = dateBadge(date)
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(2.dp, Ink, shape)
+            .background(PinkTint, shape)
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Row(
             modifier = Modifier
                 .border(2.dp, Ink, RoundedCornerShape(10.dp))
@@ -268,37 +301,39 @@ private fun MiniDateRow(date: SpecialDateDto) {
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            Text(number, style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.width(4.dp))
-            Text(unit, style = PinguCoduType.monoLabel)
+            Text(number, style = MaterialTheme.typography.titleLarge.copy(fontSize = 14.sp, lineHeight = 17.sp))
+            if (unit.isNotEmpty()) {
+                Spacer(Modifier.width(4.dp))
+                Text(unit, style = PinguCoduType.monoLabel)
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                listOfNotNull(date.emoji, date.title).joinToString(" "),
+                date.title,
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                 maxLines = 1,
             )
+            Spacer(Modifier.height(3.dp))
             Text(dateSubtitle(date), style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NudgeCard(
     status: NudgeStatus,
-    latestNudge: NudgeDto?,
-    latestNudgeTimeLabel: String,
+    notes: List<NudgeDto>,
+    currentUsername: String?,
     onSend: () -> Unit,
-    onLongPress: () -> Unit,
+    onEdit: (NudgeDto) -> Unit,
+    onDelete: (NudgeDto) -> Unit,
 ) {
-    val nameMask = LocalNameMask.current
     val buttonShape = RoundedCornerShape(14.dp)
     val (label, color) = when (status) {
-        NudgeStatus.Idle -> "send a nudge 💌" to Orange
-        NudgeStatus.Sending -> "sending…" to Orange
-        NudgeStatus.Sent -> "sent 💌" to Green
+        NudgeStatus.Idle -> "send a note 💌" to Pink
+        NudgeStatus.Sending -> "sending…" to Pink
+        NudgeStatus.Sent -> "sent 💌" to Teal
         is NudgeStatus.Failed -> status.message to Coral
     }
     Column(
@@ -306,13 +341,10 @@ private fun NudgeCard(
             .fillMaxWidth()
             .hardShadow(CardShape)
             .border(BorderWidth, Ink, CardShape)
-            .background(YellowSoft, CardShape)
+            .background(MaterialTheme.colorScheme.surface, CardShape)
             .padding(14.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("THINKING OF YOU", style = MaterialTheme.typography.labelMedium)
-            Text("hold for more", style = MaterialTheme.typography.labelMedium, color = Ink.copy(alpha = 0.55f))
-        }
+        Text("THINKING OF YOU", style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.height(10.dp))
         Box(
             modifier = Modifier
@@ -320,72 +352,100 @@ private fun NudgeCard(
                 .hardShadow(buttonShape, offsetX = 3.dp, offsetY = 3.dp)
                 .border(BorderWidth, Ink, buttonShape)
                 .background(color, buttonShape)
-                .combinedClickable(
+                .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     enabled = status != NudgeStatus.Sending,
                     onClick = onSend,
-                    onLongClick = onLongPress,
                 )
                 .padding(vertical = 16.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(label, style = MaterialTheme.typography.headlineSmall, color = Ink)
         }
-        if (latestNudge != null) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "${nameMask.resolve(latestNudge.sender)}: \"${latestNudge.message}\" · $latestNudgeTimeLabel",
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
-            )
+        if (notes.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                notes.forEach { note ->
+                    NoteRow(
+                        note = note,
+                        isMine = note.sender == currentUsername,
+                        onEdit = { onEdit(note) },
+                        onDelete = { onDelete(note) },
+                    )
+                }
+            }
         }
     }
 }
 
-private val NUDGE_PRESETS = listOf(
-    "miss you 🥺",
-    "sending a hug 🤗",
-    "hungry? 🍕",
-    "😘😘😘",
-    "coffee? ☕",
-    "goodnight 🌙",
-    "call me when free 📞",
-    "proud of you 💪",
-)
-
 @Composable
-private fun NudgePickerSheet(onDismiss: () -> Unit, onSend: (String) -> Unit) {
-    var custom by remember { mutableStateOf("") }
-    NeoBottomSheet(title = "send a nudge", onDismiss = onDismiss) {
+private fun NoteRow(note: NudgeDto, isMine: Boolean, onEdit: () -> Unit, onDelete: () -> Unit) {
+    val nameMask = LocalNameMask.current
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(2.dp, Ink, shape)
+            // Mine on white, theirs on light pink.
+            .background(if (isMine) Color.White else PinkTint, shape)
+            .padding(12.dp),
+    ) {
         Text(
-            "tap one to send it right away, or write your own.",
+            "${nameMask.resolve(note.sender)} · ${noteTimeLabel(note.createdAt)}",
+            style = MaterialTheme.typography.labelSmall,
+            color = DescriptionGrey,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(note.message, style = MaterialTheme.typography.bodyMedium)
+        if (isMine) {
+            Spacer(Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                PillActionButton(label = "edit", background = Color.White, contentColor = Ink, onClick = onEdit)
+                PillActionButton(label = "delete", background = Color.White, contentColor = Ink, onClick = onDelete)
+            }
+        }
+    }
+}
+
+private val NOTE_TIME = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)
+private val SQLITE_DATETIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+
+/** The server's UTC timestamp as a local time of day, e.g. "9:41 pm". */
+private fun noteTimeLabel(createdAt: String): String = runCatching {
+    LocalDateTime.parse(createdAt, SQLITE_DATETIME)
+        .atZone(ZoneOffset.UTC)
+        .withZoneSameInstant(ZoneId.systemDefault())
+        .format(NOTE_TIME)
+        .lowercase()
+}.getOrDefault("")
+
+/** [editing] null = writing a new note. */
+@Composable
+private fun NoteSheet(editing: NudgeDto?, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
+    var message by remember { mutableStateOf(editing?.message ?: "") }
+    NeoBottomSheet(title = if (editing == null) "send a note" else "edit note", onDismiss = onDismiss) {
+        Text(
+            if (editing == null) "write them something - it pops up on their phone." else "they won't get another push for an edit.",
             style = MaterialTheme.typography.bodySmall,
             color = DescriptionGrey,
         )
         Spacer(Modifier.height(14.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            NUDGE_PRESETS.forEach { preset ->
-                NeoChoiceChip(label = preset, selected = false, onClick = { onSend(preset) })
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-        SectionLabel("your own words")
-        Spacer(Modifier.height(8.dp))
         NeoField(
-            value = custom,
-            onValueChange = { custom = it.take(NUDGE_MAX_LENGTH) },
+            value = message,
+            onValueChange = { message = it.take(NOTE_MAX_LENGTH) },
             placeholder = "say something sweet",
             modifier = Modifier.fillMaxWidth(),
+            minLines = 5,
         )
-        Spacer(Modifier.height(4.dp))
-        Text("${custom.length}/$NUDGE_MAX_LENGTH", style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
+        Spacer(Modifier.height(10.dp))
+        Text("${message.length}/$NOTE_MAX_LENGTH", style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
         Spacer(Modifier.height(16.dp))
-        SubmitButton(label = "send it 💌", enabled = custom.isNotBlank()) { onSend(custom.trim()) }
+        SubmitButton(label = if (editing == null) "send 💌" else "save", enabled = message.isNotBlank()) { onSubmit(message.trim()) }
     }
 }
 
-private const val NUDGE_MAX_LENGTH = 80
+private const val NOTE_MAX_LENGTH = 80
 
 @Composable
 private fun GoalsTeaser(goal: SavingsGoalDto, activeGoalCount: Int, onClick: () -> Unit) {
@@ -407,7 +467,7 @@ private fun GoalsTeaser(goal: SavingsGoalDto, activeGoalCount: Int, onClick: () 
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                listOfNotNull(goal.emoji, goal.name).joinToString(" "),
+                goal.name,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,

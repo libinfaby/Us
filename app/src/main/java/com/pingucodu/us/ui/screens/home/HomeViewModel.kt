@@ -18,11 +18,13 @@ import com.pingucodu.us.data.network.NudgeDto
 import com.pingucodu.us.data.network.SavingsGoalDto
 import com.pingucodu.us.data.network.SpecialDateDto
 import com.pingucodu.us.data.network.StashItemDto
-import com.pingucodu.us.data.nudge.LatestNudgeResult
+import com.pingucodu.us.data.nudge.DeleteNudgeResult
 import com.pingucodu.us.data.nudge.NudgeRepository
 import com.pingucodu.us.data.nudge.SendNudgeResult
+import com.pingucodu.us.data.nudge.TodayNudgesResult
 import com.pingucodu.us.data.stash.StashItemsResult
 import com.pingucodu.us.data.stash.StashRepository
+import com.pingucodu.us.ui.screens.dates.sortedByNextMonthlyAnniversary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -77,8 +79,8 @@ data class HomeUiState(
     val nextMilestone: SpecialDateDto? = null,
     val topGoal: SavingsGoalDto? = null,
     val activeGoalCount: Int = 0,
-    val latestNudge: NudgeDto? = null,
-    val latestNudgeTimeLabel: String = "",
+    /** Notes either of us sent today, oldest first. */
+    val todayNotes: List<NudgeDto> = emptyList(),
     val nudgeStatus: NudgeStatus = NudgeStatus.Idle,
     val errorMessage: String? = null,
 )
@@ -127,7 +129,7 @@ class HomeViewModel @Inject constructor(
                 // instead of turning the whole dashboard into an error.
                 val datesDeferred = async { datesRepository.getDates() }
                 val goalsDeferred = async { goalsRepository.getGoals(status = "active") }
-                val nudgeDeferred = async { nudgeRepository.getLatest() }
+                val nudgeDeferred = async { nudgeRepository.getToday() }
                 applyExtras(datesDeferred.await(), goalsDeferred.await(), nudgeDeferred.await())
                 listOf(expensesDeferred.await(), balanceDeferred.await(), cycleDeferred.await(), stashDeferred.await())
             }
@@ -157,15 +159,18 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun applyExtras(dates: DatesResult, goals: GoalsResult, nudge: LatestNudgeResult) {
+    private fun applyExtras(dates: DatesResult, goals: GoalsResult, notes: TodayNudgesResult) {
         _uiState.update { state ->
             val allDates = (dates as? DatesResult.Success)?.dates
             val activeGoals = (goals as? GoalsResult.Success)?.goals
-            val latestNudge = if (nudge is LatestNudgeResult.Success) nudge.nudge else state.latestNudge
             state.copy(
-                // The server sorts upcoming countdowns soonest-first and milestones by next anniversary.
+                // The server sorts upcoming countdowns soonest-first; milestones go by their next monthly anniversary.
                 nextCountdown = if (allDates != null) allDates.firstOrNull { it.kind == "countdown" && !it.isPast } else state.nextCountdown,
-                nextMilestone = if (allDates != null) allDates.firstOrNull { it.kind == "milestone" } else state.nextMilestone,
+                nextMilestone = if (allDates != null) {
+                    allDates.filter { it.kind == "milestone" }.sortedByNextMonthlyAnniversary().firstOrNull()
+                } else {
+                    state.nextMilestone
+                },
                 // Closest to done first - that's the one worth teasing on Home.
                 topGoal = if (activeGoals != null) {
                     activeGoals.maxByOrNull { it.savedCents.toDouble() / it.targetCents }
@@ -173,26 +178,55 @@ class HomeViewModel @Inject constructor(
                     state.topGoal
                 },
                 activeGoalCount = activeGoals?.size ?: state.activeGoalCount,
-                latestNudge = latestNudge,
-                latestNudgeTimeLabel = latestNudge?.let { relativeTime(it.createdAt) } ?: "",
+                todayNotes = (notes as? TodayNudgesResult.Success)?.nudges ?: state.todayNotes,
             )
         }
     }
 
-    /** [message] null = the server picks a random cute one. */
-    fun sendNudge(message: String? = null) {
+    fun sendNudge(message: String) {
         if (_uiState.value.nudgeStatus == NudgeStatus.Sending) return
         viewModelScope.launch {
             _uiState.update { it.copy(nudgeStatus = NudgeStatus.Sending) }
             val status = when (val result = nudgeRepository.sendNudge(message)) {
-                is SendNudgeResult.Success -> NudgeStatus.Sent
+                is SendNudgeResult.Success -> {
+                    _uiState.update { it.copy(todayNotes = it.todayNotes + result.nudge) }
+                    NudgeStatus.Sent
+                }
                 is SendNudgeResult.Rejected -> NudgeStatus.Failed(result.message)
                 is SendNudgeResult.NetworkError -> NudgeStatus.Failed(result.message)
             }
-            _uiState.update { it.copy(nudgeStatus = status) }
-            delay(if (status is NudgeStatus.Sent) 2_000 else 3_000)
-            _uiState.update { if (it.nudgeStatus == status) it.copy(nudgeStatus = NudgeStatus.Idle) else it }
+            flashStatus(status)
         }
+    }
+
+    fun editNote(id: String, message: String) {
+        viewModelScope.launch {
+            when (val result = nudgeRepository.updateNudge(id, message)) {
+                is SendNudgeResult.Success -> _uiState.update { state ->
+                    state.copy(todayNotes = state.todayNotes.map { if (it.id == id) result.nudge else it })
+                }
+                is SendNudgeResult.Rejected -> flashStatus(NudgeStatus.Failed(result.message))
+                is SendNudgeResult.NetworkError -> flashStatus(NudgeStatus.Failed(result.message))
+            }
+        }
+    }
+
+    fun deleteNote(id: String) {
+        viewModelScope.launch {
+            when (val result = nudgeRepository.deleteNudge(id)) {
+                DeleteNudgeResult.Success -> _uiState.update { state ->
+                    state.copy(todayNotes = state.todayNotes.filterNot { it.id == id })
+                }
+                is DeleteNudgeResult.NetworkError -> flashStatus(NudgeStatus.Failed(result.message))
+            }
+        }
+    }
+
+    /** Shows [status] on the send button for a moment, then goes back to Idle. */
+    private suspend fun flashStatus(status: NudgeStatus) {
+        _uiState.update { it.copy(nudgeStatus = status) }
+        delay(if (status is NudgeStatus.Sent) 2_000 else 3_000)
+        _uiState.update { if (it.nudgeStatus == status) it.copy(nudgeStatus = NudgeStatus.Idle) else it }
     }
 
     private fun buildActivityFeed(
