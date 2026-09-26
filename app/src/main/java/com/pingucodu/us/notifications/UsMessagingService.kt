@@ -49,7 +49,7 @@ class UsMessagingService : FirebaseMessagingService() {
 
         val notification = NotificationCompat.Builder(this, PinguCoduApplication.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setColor(ContextCompat.getColor(this, R.color.pink))
+            .setColor(ContextCompat.getColor(this, R.color.notification_accent))
             .setContentTitle(title)
             .setContentText(body)
             .setContentIntent(pendingIntent)

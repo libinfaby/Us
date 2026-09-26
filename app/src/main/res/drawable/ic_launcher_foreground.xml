@@ -1,36 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Split-heart outline only (no circle/dots - those live in ic_launcher_background). Nested
-     group replays the source artwork's own translate+scale, wrapped in an outer pivot-scale
-     that shrinks it into the 66dp safe zone on every adaptive icon mask. -->
+<!-- The Us glyph from UsAppLogo.svg (blobs live in ic_launcher_background). Same 300 viewport
+     and 72/108 pivot-scale as the background, which keeps the glyph inside the 66dp safe zone.
+     VectorDrawable has no SVG filters, so the source's rough-edge turbulence is dropped
+     (sub-pixel at launcher sizes) and the dot's offset pink drop shadow is drawn as a
+     half-alpha circle behind it. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="256"
-    android:viewportHeight="256">
+    android:viewportWidth="300"
+    android:viewportHeight="300">
     <group
-        android:pivotX="126.3"
-        android:pivotY="136.5"
-        android:scaleX="0.68"
-        android:scaleY="0.68">
-        <group
-            android:translateX="16"
-            android:translateY="16"
-            android:scaleX="1.697"
-            android:scaleY="1.697">
-            <path
-                android:fillColor="#FF4FA3"
-                android:strokeColor="#111111"
-                android:strokeWidth="7"
-                android:strokeLineJoin="round"
-                android:strokeLineCap="round"
-                android:pathData="M74,118 C74,118 22,90 22,58 C22,41 35,30 49,32 C58,33.5 66,39 72,47 C77,38 85,30 97,31 C110,32 120,43 118,59 C114,91 74,118 74,118 Z" />
-            <path
-                android:fillColor="#FFF1F7"
-                android:strokeColor="#111111"
-                android:strokeWidth="7"
-                android:strokeLineJoin="round"
-                android:strokeLineCap="round"
-                android:pathData="M62,112 C62,112 10,84 10,52 C10,35 23,24 37,26 C46,27.5 54,33 60,41 C65,32 73,24 85,25 C98,26 108,37 106,53 C102,85 62,112 62,112 Z" />
-        </group>
+        android:pivotX="150"
+        android:pivotY="150"
+        android:scaleX="0.6667"
+        android:scaleY="0.6667">
+        <!-- Pink offset stroke -->
+        <path
+            android:strokeColor="#FF92C1"
+            android:strokeWidth="18"
+            android:pathData="M165.207,230H175.732C185.121,230 192.732,222.389 192.732,213V155.242M192.732,155.242V92C192.732,85.9249 197.657,81 203.732,81H218H187.5H145.876C141.232,81 137.089,83.916 135.521,88.2871L114.125,147.955C112.558,152.326 108.414,155.242 103.771,155.242H95.5H192.732ZM175.5,176.131H113.666C109.06,176.131 104.941,179.001 103.346,183.323L89.3488,221.261C87.7542,225.583 83.6355,228.453 79.0288,228.453H70L152.122,230" />
+        <!-- Dark main stroke + foot bar -->
+        <path
+            android:strokeColor="#242424"
+            android:strokeWidth="13"
+            android:pathData="M173.207,231H175.732C189.539,231 200.732,219.807 200.732,206V155.74M200.732,155.74V106C200.732,92.1929 211.925,81 225.732,81H226H195.5H163.877C153.25,81 143.785,87.7175 140.278,97.7483L122.806,147.717C121.125,152.522 116.591,155.74 111.5,155.74H200.732ZM163.5,176.769H131.578C121.032,176.769 111.621,183.387 108.052,193.31L100.421,214.532C96.8689,224.412 87.499,231 77,231H160.122" />
+        <path
+            android:strokeColor="#242424"
+            android:strokeWidth="13"
+            android:pathData="M174,231H210" />
+        <!-- Dot + its offset pink shadow -->
+        <path
+            android:fillColor="#FF4FA3"
+            android:fillAlpha="0.5"
+            android:pathData="M166,102a5,5 0,1 0,10 0a5,5 0,1 0,-10 0Z" />
+        <path
+            android:fillColor="#242424"
+            android:pathData="M168,100a6,6 0,1 0,12 0a6,6 0,1 0,-12 0Z" />
+        <!-- Thin outline details -->
+        <path
+            android:strokeColor="#242424"
+            android:strokeWidth="2"
+            android:pathData="M154.259,70H218V83.2128H204.047L200.294,207.753C199.886,221.261 188.819,232 175.305,232H167.173V217.064C178.181,217.064 187.105,208.14 187.105,197.132V157.319H101.895V142.383H102.949C106.791,142.383 110.209,139.945 111.459,136.312L127.784,88.8868C131.674,77.586 142.308,70 154.259,70Z" />
+        <path
+            android:strokeColor="#242424"
+            android:strokeWidth="2"
+            android:pathData="M85.8144,211.67L94.9255,185.227C99.0959,173.124 110.487,165 123.289,165H138.5H167.173V175.128H117.342L101.895,217.064H152.722V232H71V217.064H78.2508C81.6647,217.064 84.7023,214.898 85.8144,211.67Z" />
+        <path
+            android:strokeColor="#242424"
+            android:strokeWidth="2"
+            android:pathData="M126,145H188V87" />
+        <path
+            android:strokeColor="#FF2E92"
+            android:strokeWidth="1"
+            android:pathData="M180,233H198" />
+        <path
+            android:strokeColor="#FF2E92"
+            android:strokeWidth="1"
+            android:pathData="M180,233C191.181,226.167 198,214.008 198,200.905V152M198,152V105C198,93.1259 207.626,83.5 219.5,83.5H189.812C163.439,83.5 139.812,99.8041 130.453,124.461L127.629,131.899C123.037,143.999 111.442,152 98.5,152H189.5H198ZM159,174.5H144.294C126.617,174.5 110.737,185.306 104.25,201.75L97.9037,217.837C95.2464,224.573 88.7412,229 81.5,229H152.5" />
     </group>
 </vector>
