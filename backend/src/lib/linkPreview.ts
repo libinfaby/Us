@@ -1,15 +1,19 @@
-// Text-only link previews for Stash: fetch a page and pull out a title and
-// description from its OpenGraph / meta tags using Workers' built-in
-// HTMLRewriter, so there's no HTML-parsing dependency. No images on purpose.
+// Text-only link previews for Stash, for IMDb and Google Maps links only.
+// IMDb films are looked up on Wikidata + Wikipedia; Maps pages are read for
+// their OpenGraph / meta tags with Workers' built-in HTMLRewriter, so there's
+// no HTML-parsing dependency. No images on purpose.
 
 const FETCH_TIMEOUT_MS = 6000;
 const MAX_DESCRIPTION_LENGTH = 300;
+const MAX_GENRES = 3;
 const USER_AGENT = 'PinguCoduLinkPreview/1.0 (+personal app)';
 
 export type LinkPreview = {
   url: string;
   title: string;
   description: string | null;
+  /** Lowercase genre names for a movie, e.g. ["heist", "science fiction"]; empty for places. */
+  genres: string[];
   suggestedType: 'movie' | 'place';
 };
 
@@ -23,6 +27,17 @@ export function parseHttpUrl(raw: string): URL | null {
   }
 }
 
+/** The film id in an IMDb title link, e.g. "tt1375666", or null for any other link. */
+function imdbIdFromUrl(url: URL): string | null {
+  if (!/(^|\.)imdb\.com$/i.test(url.hostname)) return null;
+  return url.pathname.match(/\/title\/(tt\d+)/)?.[1] ?? null;
+}
+
+/** Only IMDb title links and Google Maps links get a preview. */
+export function isSupportedPreviewUrl(url: URL): boolean {
+  return imdbIdFromUrl(url) !== null || isMapsUrl(url);
+}
+
 export function isMapsUrl(url: URL): boolean {
   const host = url.hostname.toLowerCase();
   if (host === 'maps.app.goo.gl' || host === 'maps.google.com') return true;
@@ -30,7 +45,13 @@ export function isMapsUrl(url: URL): boolean {
   return /(^|\.)google\.[a-z.]+$/.test(host) && url.pathname.startsWith('/maps');
 }
 
-type Meta = { ogTitle?: string; twitterTitle?: string; docTitle: string; ogDescription?: string; metaDescription?: string };
+type Meta = {
+  ogTitle?: string;
+  twitterTitle?: string;
+  docTitle: string;
+  ogDescription?: string;
+  metaDescription?: string;
+};
 
 async function extractMeta(res: Response): Promise<Meta> {
   const meta: Meta = { docTitle: '' };
@@ -80,15 +101,6 @@ function clean(text: string | undefined): string | null {
   return cleaned.length > 0 ? cleaned : null;
 }
 
-/** Strips site branding, e.g. "Inception (2010) • Letterboxd" -> "Inception (2010)". */
-function cleanTitle(title: string, host: string): string {
-  let t = title;
-  if (host.endsWith('letterboxd.com')) {
-    t = t.replace(/\s*[•|-]\s*Letterboxd\s*$/i, '');
-  }
-  return t.trim();
-}
-
 /** Google Maps pages often only say "Google Maps" in their tags; the place name is in the URL path. */
 function placeNameFromMapsUrl(url: URL): string | null {
   const match = url.pathname.match(/\/maps\/place\/([^/]+)/);
@@ -112,6 +124,14 @@ function searchQueryFromMapsUrl(url: URL): string | null {
   } catch {
     return null;
   }
+}
+
+/** "Science fiction film" / "heist film" -> "science fiction" / "heist"; keeps the first few, no repeats. */
+function toGenreTags(names: (string | null | undefined)[]): string[] {
+  const tags = names
+    .map((name) => clean(name ?? undefined)?.toLowerCase().replace(/\s+film$/, '').trim())
+    .filter((tag): tag is string => !!tag);
+  return [...new Set(tags)].slice(0, MAX_GENRES);
 }
 
 // Google's boilerplate og:description on every Maps page - not worth saving.
@@ -153,7 +173,9 @@ async function wikipediaSummary(articleTitle: string): Promise<string | null> {
  * up there instead: "Inception" + "2010 film directed by Christopher Nolan", then add the opening
  * paragraph of the film's English Wikipedia article as a short summary.
  */
-async function imdbPreviewFromWikidata(imdbId: string): Promise<{ title: string; description: string | null } | null> {
+async function imdbPreviewFromWikidata(
+  imdbId: string,
+): Promise<{ title: string; description: string | null; genres: string[] } | null> {
   const search = await fetchJson<{ query?: { search?: { title: string }[] } }>(
     `${WIKIDATA_API}?action=query&list=search&srsearch=haswbstatement:P345=${imdbId}&srlimit=1&format=json`,
   );
@@ -167,38 +189,58 @@ async function imdbPreviewFromWikidata(imdbId: string): Promise<{ title: string;
         labels?: { en?: { value: string } };
         descriptions?: { en?: { value: string } };
         sitelinks?: { enwiki?: { title: string } };
+        claims?: { P136?: { mainsnak?: { datavalue?: { value?: { id?: string } } } }[] };
       }
     >;
   }>(
-    `${WIKIDATA_API}?action=wbgetentities&ids=${entityId}&props=labels|descriptions|sitelinks&languages=en&sitefilter=enwiki&format=json`,
+    `${WIKIDATA_API}?action=wbgetentities&ids=${entityId}&props=labels|descriptions|sitelinks|claims&languages=en&sitefilter=enwiki&format=json`,
   );
   const entity = entities?.entities?.[entityId];
   const label = clean(entity?.labels?.en?.value);
   if (!label) return null;
   const tagline = clean(entity?.descriptions?.en?.value);
   const articleTitle = entity?.sitelinks?.enwiki?.title;
-  const summary = articleTitle ? await wikipediaSummary(articleTitle) : null;
-  // Match Letterboxd's "Title (year)" style when the tagline leads with the year.
+  // Genre (P136) values are entity ids like Q2484376; their names need one more lookup.
+  const genreIds = (entity?.claims?.P136 ?? [])
+    .map((claim) => claim.mainsnak?.datavalue?.value?.id)
+    .filter((id): id is string => !!id && /^Q\d+$/.test(id))
+    .slice(0, MAX_GENRES);
+  const [summary, genres] = await Promise.all([
+    articleTitle ? wikipediaSummary(articleTitle) : Promise.resolve(null),
+    wikidataLabels(genreIds),
+  ]);
+  // "Title (year)" when the tagline leads with the year.
   const year = tagline?.match(/^(\d{4})\b/)?.[1];
-  const capitalizedTagline = tagline ? tagline.charAt(0).toUpperCase() + tagline.slice(1) : null;
-  const description = [capitalizedTagline, summary].filter((part): part is string => part !== null).join('\n\n');
+  // The summary paragraph on its own; the short tagline only when there's no article.
+  const description = summary ?? (tagline ? tagline.charAt(0).toUpperCase() + tagline.slice(1) : null);
   return {
     title: year ? `${label} (${year})` : label,
-    description: description.length > 0 ? description : null,
+    description,
+    genres: toGenreTags(genres),
   };
+}
+
+/** English names for Wikidata ids, in the same order; ids without a name are dropped. */
+async function wikidataLabels(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const res = await fetchJson<{ entities?: Record<string, { labels?: { en?: { value: string } } }> }>(
+    `${WIKIDATA_API}?action=wbgetentities&ids=${ids.join('|')}&props=labels&languages=en&format=json`,
+  );
+  return ids.map((id) => res?.entities?.[id]?.labels?.en?.value).filter((name): name is string => !!name);
 }
 
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
-/** Returns null when the page can't be fetched or has nothing usable in it. */
+/** Returns null for links other than IMDb / Google Maps, or when there's nothing usable to show. */
 export async function fetchLinkPreview(input: URL): Promise<LinkPreview | null> {
-  const imdbId = /(^|\.)imdb\.com$/i.test(input.hostname) ? input.pathname.match(/\/title\/(tt\d+)/)?.[1] : undefined;
+  const imdbId = imdbIdFromUrl(input);
   if (imdbId) {
     const fromWikidata = await imdbPreviewFromWikidata(imdbId);
     return fromWikidata ? { url: input.toString(), ...fromWikidata, suggestedType: 'movie' } : null;
   }
+  if (!isMapsUrl(input)) return null;
 
   let res: Response;
   try {
@@ -212,8 +254,6 @@ export async function fetchLinkPreview(input: URL): Promise<LinkPreview | null> 
   }
 
   const finalUrl = parseHttpUrl(res.url) ?? input;
-  const isMaps = isMapsUrl(input) || isMapsUrl(finalUrl);
-  const host = finalUrl.hostname.toLowerCase();
 
   let meta: Meta = { docTitle: '' };
   const contentType = res.headers.get('content-type') ?? '';
@@ -221,13 +261,12 @@ export async function fetchLinkPreview(input: URL): Promise<LinkPreview | null> 
     try {
       meta = await extractMeta(res);
     } catch {
-      // Fall through - for Maps links the URL alone can still give us a name.
+      // Fall through - the URL alone can still give us a name.
     }
   }
 
   let title = clean(meta.ogTitle) ?? clean(meta.twitterTitle) ?? clean(meta.docTitle);
-  if (title) title = cleanTitle(title, host);
-  if (isMaps && (!title || /^google maps$/i.test(title))) {
+  if (!title || /^google maps$/i.test(title)) {
     title =
       placeNameFromMapsUrl(finalUrl) ??
       placeNameFromMapsUrl(input) ??
@@ -237,12 +276,13 @@ export async function fetchLinkPreview(input: URL): Promise<LinkPreview | null> 
   if (!title) return null;
 
   let description = clean(meta.ogDescription) ?? clean(meta.metaDescription);
-  if (isMaps && description && GENERIC_MAPS_DESCRIPTION.test(description)) description = null;
+  if (description && GENERIC_MAPS_DESCRIPTION.test(description)) description = null;
   // Keep the link as shared (e.g. the short maps.app.goo.gl one) rather than the long redirect target.
   return {
     url: input.toString(),
     title,
     description: description ? truncate(description, MAX_DESCRIPTION_LENGTH) : null,
-    suggestedType: isMaps ? 'place' : 'movie',
+    genres: [],
+    suggestedType: 'place',
   };
 }

@@ -38,5 +38,7 @@ data class LinkPreviewDto(
     val url: String,
     val title: String,
     val description: String? = null,
+    /** Lowercase genre names for a movie, e.g. ["heist", "science fiction"]; empty for places. */
+    val genres: List<String> = emptyList(),
     val suggestedType: String,
 )

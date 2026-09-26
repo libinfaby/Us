@@ -844,20 +844,20 @@ private fun AddMemoryButton(onClick: () -> Unit) {
 
 @Composable
 private fun FetchLinkChip(enabled: Boolean, isFetching: Boolean, onClick: () -> Unit) {
-    // Same look as the "hangouts" category pill: black with teal text.
-    val shape = RoundedCornerShape(50)
+    val shape = RoundedCornerShape(14.dp)
     Box(
         modifier = Modifier
-            .border(2.dp, Ink, shape)
-            .background(Ink, shape)
+            .hardShadow(shape, offsetX = 3.dp, offsetY = 3.dp)
+            .border(3.dp, Ink, shape)
+            .background(if (enabled) YellowSoft else Color.White, shape)
             .clickableNoRipple(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+            .padding(horizontal = 14.dp, vertical = 13.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             if (isFetching) "…" else "fetch",
             style = MaterialTheme.typography.labelLarge,
-            color = if (enabled || isFetching) Teal else Teal.copy(alpha = 0.4f),
+            color = if (enabled || isFetching) Ink else Ink.copy(alpha = 0.35f),
         )
     }
 }
@@ -945,17 +945,18 @@ private fun StashItemFormDialog(
         val preview = linkPreview ?: return@LaunchedEffect
         if (type !in LINK_PREVIEW_TYPES) type = preview.suggestedType
         if (type == "place") {
-            // "Cafe X, 12 MG Road, Kochi" -> title "Cafe X", and the address plus the link go in the notes.
+            // "Cafe X, 12 MG Road, Kochi" -> title "Cafe X", and the address goes in the notes.
             val name = preview.title.substringBefore(',').trim()
             val address = preview.title.substringAfter(',', "").trim()
             if (!titleTyped || title.isBlank()) title = name.ifEmpty { preview.title }
-            if (!bodyTyped || body.isBlank()) {
-                val details = listOf(address, preview.description.orEmpty()).filter { it.isNotBlank() }.joinToString("\n")
-                body = listOf(details, "[map: ${preview.url}]").filter { it.isNotEmpty() }.joinToString("\n\n")
-            }
+            val details = listOf(address, preview.description.orEmpty()).filter { it.isNotBlank() }.joinToString("\n")
+            if ((!bodyTyped || body.isBlank()) && details.isNotEmpty()) body = details
         } else {
             if (!titleTyped || title.isBlank()) title = preview.title
             if ((!bodyTyped || body.isBlank()) && preview.description != null) body = preview.description
+            // Select each genre as a tag, reusing an existing tag's spelling when only the case differs.
+            val knownTags = tagsByType[type].orEmpty() + tags
+            tags = tags + preview.genres.map { genre -> knownTags.firstOrNull { it.equals(genre, ignoreCase = true) } ?: genre }
         }
         url = preview.url
     }
@@ -973,7 +974,7 @@ private fun StashItemFormDialog(
                 NeoField(
                     value = url,
                     onValueChange = { url = it },
-                    placeholder = if (type == "place") "paste a google maps link" else "paste an imdb / letterboxd link",
+                    placeholder = if (type == "place") "paste a google maps link" else "paste an imdb link",
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { if (url.isNotBlank()) onFetchPreview(url) }),

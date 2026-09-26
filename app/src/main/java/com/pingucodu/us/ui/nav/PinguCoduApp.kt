@@ -136,7 +136,7 @@ private fun MainScreen(
         onPendingRouteConsumed()
     }
 
-    // A link shared into the app from IMDb/Letterboxd/Maps: open Stash's add sheet with it.
+    // A link shared into the app from IMDb or Maps: open Stash's add sheet with it.
     LaunchedEffect(pendingShareUrl) {
         if (pendingShareUrl != null) {
             stashSharedUrl = pendingShareUrl

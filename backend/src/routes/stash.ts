@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { requireAuth, type AuthVariables } from '../middleware/auth';
 import { notifyPartner } from '../lib/notify';
-import { fetchLinkPreview, parseHttpUrl } from '../lib/linkPreview';
+import { fetchLinkPreview, isSupportedPreviewUrl, parseHttpUrl } from '../lib/linkPreview';
 
 export const stashRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -128,10 +128,11 @@ stashRoutes.get('/tags', async (c) => {
   return c.json(results.map((r) => ({ type: r.type, tag: r.tag })));
 });
 
-/** Text-only preview (title + description) for a movie/place link - see lib/linkPreview.ts. */
+/** Text-only preview (title + description) for an IMDb or Google Maps link - see lib/linkPreview.ts. */
 stashRoutes.get('/preview', async (c) => {
   const url = parseHttpUrl(c.req.query('url') ?? '');
   if (!url) return c.json({ error: 'url must be an http(s) link' }, 400);
+  if (!isSupportedPreviewUrl(url)) return c.json({ error: 'only imdb and google maps links can be fetched' }, 400);
   const preview = await fetchLinkPreview(url);
   if (!preview) return c.json({ error: "couldn't read that link - fill it in by hand" }, 422);
   return c.json(preview);

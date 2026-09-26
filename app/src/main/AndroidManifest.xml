@@ -26,7 +26,7 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- "Share to Us" from IMDb, Letterboxd, Maps etc. - opens Stash's add sheet with the link. -->
+            <!-- "Share to Us" from IMDb or Maps - opens Stash's add sheet with the link. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
 
