@@ -4,7 +4,7 @@ import com.pingucodu.us.data.local.TokenStore
 import com.pingucodu.us.data.network.ApiService
 import com.pingucodu.us.data.network.ErrorResponse
 import com.pingucodu.us.data.network.LinkPreviewDto
-import com.pingucodu.us.data.network.MovieSearchResultDto
+import com.pingucodu.us.data.network.SearchResultDto
 import com.pingucodu.us.data.network.toUserMessage
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
@@ -55,9 +55,9 @@ sealed interface LinkPreviewResult {
     data class NetworkError(val message: String) : LinkPreviewResult
 }
 
-sealed interface MovieSearchResult {
-    data class Success(val movies: List<MovieSearchResultDto>) : MovieSearchResult
-    data class Failed(val message: String) : MovieSearchResult
+sealed interface SearchResult {
+    data class Success(val results: List<SearchResultDto>) : SearchResult
+    data class Failed(val message: String) : SearchResult
 }
 
 @Singleton
@@ -184,22 +184,23 @@ class StashRepository @Inject constructor(
         }
     }
 
-    suspend fun searchMovies(query: String): MovieSearchResult {
-        val token = bearerToken() ?: return MovieSearchResult.Failed("not logged in")
+    /** Films ([type] "movie") or books ([type] "book") matching a typed name. */
+    suspend fun search(type: String, query: String): SearchResult {
+        val token = bearerToken() ?: return SearchResult.Failed("not logged in")
         val response = try {
-            api.searchMovies(token, query)
+            if (type == "book") api.searchBooks(token, query) else api.searchMovies(token, query)
         } catch (e: IOException) {
-            return MovieSearchResult.Failed(e.toUserMessage())
+            return SearchResult.Failed(e.toUserMessage())
         }
         val body = response.body()
-        return if (response.isSuccessful && body != null) MovieSearchResult.Success(body) else MovieSearchResult.Failed(errorMessage(response))
+        return if (response.isSuccessful && body != null) SearchResult.Success(body) else SearchResult.Failed(errorMessage(response))
     }
 
-    /** The same preview a pasted IMDb link gives, for a film picked from [searchMovies]. */
-    suspend fun getMoviePreview(id: String): LinkPreviewResult {
+    /** The same preview a pasted IMDb / Google Books link gives, for a result picked from [search]. */
+    suspend fun getSearchResultPreview(type: String, id: String): LinkPreviewResult {
         val token = bearerToken() ?: return LinkPreviewResult.NetworkError("not logged in")
         val response = try {
-            api.getMoviePreview(token, id)
+            if (type == "book") api.getBookPreview(token, id) else api.getMoviePreview(token, id)
         } catch (e: IOException) {
             return LinkPreviewResult.NetworkError(e.toUserMessage())
         }

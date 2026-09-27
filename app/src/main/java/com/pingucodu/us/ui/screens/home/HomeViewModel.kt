@@ -246,6 +246,7 @@ class HomeViewModel @Inject constructor(
             val author = if (item.type == "todo") null else item.author
             val code = when (item.type) {
                 "movie" -> "mv"
+                "book" -> "bk"
                 "link" -> "ln"
                 "place" -> "pl"
                 "note" -> "nt"

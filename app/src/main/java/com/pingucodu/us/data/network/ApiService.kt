@@ -192,10 +192,22 @@ interface ApiService {
     suspend fun searchMovies(
         @Header("Authorization") bearerToken: String,
         @Query("q") query: String,
-    ): Response<List<MovieSearchResultDto>>
+    ): Response<List<SearchResultDto>>
 
     @GET("stash/movie-preview")
     suspend fun getMoviePreview(
+        @Header("Authorization") bearerToken: String,
+        @Query("id") id: String,
+    ): Response<LinkPreviewDto>
+
+    @GET("stash/book-search")
+    suspend fun searchBooks(
+        @Header("Authorization") bearerToken: String,
+        @Query("q") query: String,
+    ): Response<List<SearchResultDto>>
+
+    @GET("stash/book-preview")
+    suspend fun getBookPreview(
         @Header("Authorization") bearerToken: String,
         @Query("id") id: String,
     ): Response<LinkPreviewDto>

@@ -26,27 +26,29 @@ data class StashItemRequest(
     val type: String? = null,
     val title: String? = null,
     val body: String? = null,
-    /** Movies and places only; "" clears it on PATCH (null is simply left out of the JSON). */
+    /** Movies, books and places only; "" clears it on PATCH (null is simply left out of the JSON). */
     val url: String? = null,
     val tags: List<String>? = null,
     val status: String? = null,
 )
 
-/** Text-only preview of a movie/place link: `GET /stash/preview`. */
+/** Text-only preview of a movie/book/place link: `GET /stash/preview`. */
 @Serializable
 data class LinkPreviewDto(
     val url: String,
     val title: String,
     val description: String? = null,
-    /** Lowercase genre names for a movie, e.g. ["heist", "science fiction"]; empty for places. */
+    /** Lowercase genre names for a movie or book, e.g. ["heist", "science fiction"]; empty for places. */
     val genres: List<String> = emptyList(),
     val suggestedType: String,
 )
 
-/** One film matching a typed name: `GET /stash/movie-search`. [id] is its Wikidata id, passed to
- * `GET /stash/movie-preview` once picked; [description] tells same-named films apart. */
+/** One film or book matching a typed name: `GET /stash/movie-search` / `GET /stash/book-search`.
+ * [id] is the film's Wikidata id or the book's Google Books volume id, passed to
+ * `GET /stash/movie-preview` / `GET /stash/book-preview` once picked; [description] tells
+ * same-named results apart. */
 @Serializable
-data class MovieSearchResultDto(
+data class SearchResultDto(
     val id: String,
     val title: String,
     val description: String,

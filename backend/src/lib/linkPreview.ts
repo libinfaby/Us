@@ -1,8 +1,9 @@
-// Text-only link previews for Stash, for IMDb and Google Maps links only.
+// Text-only link previews for Stash, for IMDb, Google Books and Google Maps links only.
 // IMDb films come from OMDb (IMDb's plot and genres), with Wikidata + Wikipedia
-// as the fallback and for finding films by name. Maps links carry the place
-// in the URL they redirect to, so those redirects are followed by hand and no
-// Google page is ever loaded. No images on purpose.
+// as the fallback and for finding films by name. Books, found by link or by
+// name, come from the Google Books API. Maps links carry the place in the URL
+// they redirect to, so those redirects are followed by hand and no Google page
+// is ever loaded. No images on purpose.
 
 const FETCH_TIMEOUT_MS = 6000;
 const MAX_MAPS_REDIRECTS = 5;
@@ -14,9 +15,9 @@ export type LinkPreview = {
   url: string;
   title: string;
   description: string | null;
-  /** Lowercase genre names for a movie, e.g. ["heist", "science fiction"]; empty for places. */
+  /** Lowercase genre names for a movie or book, e.g. ["heist", "science fiction"]; empty for places. */
   genres: string[];
-  suggestedType: 'movie' | 'place';
+  suggestedType: 'movie' | 'book' | 'place';
 };
 
 /** Returns the parsed http(s) URL, or null for anything else (javascript:, file:, garbage). */
@@ -35,9 +36,30 @@ function imdbIdFromUrl(url: URL): string | null {
   return url.pathname.match(/\/title\/(tt\d+)/)?.[1] ?? null;
 }
 
-/** Only IMDb title links and Google Maps links get a preview. */
+// Google Books volume ids are 12 characters, e.g. "pD6arNyKyi8C".
+const BOOK_ID = /^[\w-]{12}$/;
+
+/**
+ * The volume id in a Google Books or Play Books link, or null for any other link:
+ * books.google.{tld}/books?id={id} (and /books/about/...?id={id}), google.{tld}/books/edition/{title}/{id},
+ * and play.google.com/store/books/details?id={id}.
+ */
+export function googleBooksIdFromUrl(url: URL): string | null {
+  const host = url.hostname.toLowerCase();
+  let id: string | null | undefined = null;
+  if (/^books\.google\.[a-z.]+$/.test(host) && url.pathname.startsWith('/books')) {
+    id = url.searchParams.get('id');
+  } else if (host === 'play.google.com' && url.pathname.startsWith('/store/books/details')) {
+    id = url.searchParams.get('id');
+  } else if (/(^|\.)google\.[a-z.]+$/.test(host)) {
+    id = url.pathname.match(/^\/books\/edition\/[^/]*\/([^/?#]+)/)?.[1];
+  }
+  return id && BOOK_ID.test(id) ? id : null;
+}
+
+/** Only IMDb title links, Google Books links and Google Maps links get a preview. */
 export function isSupportedPreviewUrl(url: URL): boolean {
-  return imdbIdFromUrl(url) !== null || isMapsUrl(url);
+  return imdbIdFromUrl(url) !== null || googleBooksIdFromUrl(url) !== null || isMapsUrl(url);
 }
 
 export function isMapsUrl(url: URL): boolean {
@@ -302,11 +324,13 @@ async function imdbPreview(imdbId: string, omdbApiKey: string | undefined): Prom
   return film && omdb?.genres.length ? { ...film, genres: omdb.genres } : film;
 }
 
-export type MovieSearchResult = {
-  /** Wikidata item id, passed back to [filmPreview] once one is picked. */
+export type SearchResult = {
+  /** Wikidata item id for a film, Google Books volume id for a book - passed back to
+   * [filmPreview] / [bookPreview] once one is picked. */
   id: string;
   title: string;
-  /** Wikipedia's short description, e.g. "2013 Indian film by Jeethu Joseph" - tells same-named films apart. */
+  /** Tells same-named results apart: Wikipedia's "2013 Indian film by Jeethu Joseph" for a film,
+   * "J.R.R. Tolkien · 1937" for a book. */
   description: string;
 };
 
@@ -319,7 +343,7 @@ const NOT_A_FILM = /\b(soundtrack|series|video game|franchise)\b/i;
  * Films matching a typed name, best match first, using Wikipedia's search (it ranks the well-known
  * film above remakes and namesakes). Null when the search itself fails.
  */
-export async function searchMovies(query: string): Promise<MovieSearchResult[] | null> {
+export async function searchMovies(query: string): Promise<SearchResult[] | null> {
   const res = await fetchJson<{
     query?: { pages?: Record<string, { title: string; index: number; description?: string; pageprops?: { wikibase_item?: string } }> };
   }>(
@@ -347,20 +371,102 @@ async function wikidataLabels(ids: string[]): Promise<string[]> {
   return ids.map((id) => wikidataLabel(res?.entities?.[id]?.labels)).filter((name): name is string => !!name);
 }
 
+const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes';
+
+type GoogleBooksVolume = {
+  id?: string;
+  volumeInfo?: {
+    title?: string;
+    authors?: string[];
+    publishedDate?: string;
+    description?: string;
+    categories?: string[];
+  };
+};
+
+function withBooksKey(url: string, apiKey: string | undefined): string {
+  return apiKey ? `${url}&key=${encodeURIComponent(apiKey)}` : url;
+}
+
+/** Google's blurbs are HTML ("<p>In a hole in the ground...<br>"); keep the text, with breaks as spaces. */
+function stripHtml(html: string): string {
+  return html.replace(/<br\s*\/?>|<\/p>/gi, ' ').replace(/<[^>]*>/g, '');
+}
+
+/**
+ * "Fiction / Fantasy / Epic" -> "fantasy", "epic": the broad "fiction" / "general" levels say nothing,
+ * and only single-word levels become tags ("self-help" yes, "Religion, State & Politics" no).
+ */
+function bookGenres(categories: string[] | undefined): string[] {
+  const parts = (categories ?? []).flatMap((category) => category.split('/')).map((part) => part.trim());
+  return toGenreTags(parts.filter((part) => /^[\p{L}'-]+$/u.test(part) && !/^(general|fiction)$/i.test(part)));
+}
+
+/**
+ * Everything the Stash form fills in for a book, from its Google Books volume: "The Hobbit by
+ * J.R.R. Tolkien", the publisher's blurb cut at a sentence, up to three genres, and its Google
+ * Books link. Null when the id is unknown or the API fails.
+ */
+export async function bookPreview(volumeId: string, apiKey?: string): Promise<LinkPreview | null> {
+  if (!BOOK_ID.test(volumeId)) return null;
+  const volume = await fetchJson<GoogleBooksVolume>(withBooksKey(`${GOOGLE_BOOKS_API}/${volumeId}?projection=full`, apiKey));
+  const info = volume?.volumeInfo;
+  const name = clean(info?.title);
+  if (!info || !name) return null;
+  const author = clean(info.authors?.[0]);
+  const blurb = clean(info.description ? stripHtml(info.description) : undefined);
+  return {
+    url: `https://books.google.com/books?id=${volumeId}`,
+    title: author ? `${name} by ${author}` : name,
+    description: blurb ? truncateAtSentence(blurb, MAX_PLOT_LENGTH) : null,
+    genres: bookGenres(info.categories),
+    suggestedType: 'book',
+  };
+}
+
+/** Books matching a typed name, best match first, from Google Books. Null when the search itself fails. */
+export async function searchBooks(query: string, apiKey?: string): Promise<SearchResult[] | null> {
+  const res = await fetchJson<{ items?: GoogleBooksVolume[] }>(
+    withBooksKey(`${GOOGLE_BOOKS_API}?q=${encodeURIComponent(query)}&printType=books&maxResults=10`, apiKey),
+  );
+  if (!res) return null;
+  const seen = new Set<string>();
+  return (res.items ?? [])
+    .flatMap((volume) => {
+      const title = clean(volume.volumeInfo?.title);
+      const authors = (volume.volumeInfo?.authors ?? []).map((a) => clean(a)).filter((a): a is string => !!a);
+      if (!volume.id || !BOOK_ID.test(volume.id) || !title || authors.length === 0) return [];
+      // Many editions of the same book come back; show each title + author once.
+      const key = `${title}|${authors[0]}`.toLowerCase();
+      if (seen.has(key)) return [];
+      seen.add(key);
+      const year = volume.volumeInfo?.publishedDate?.match(/^\d{4}/)?.[0];
+      const byline = authors.slice(0, 2).join(', ');
+      return [{ id: volume.id, title, description: year ? `${byline} · ${year}` : byline }];
+    })
+    .slice(0, MAX_SEARCH_RESULTS);
+}
+
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
 /**
- * Returns null for links other than IMDb / Google Maps, or when there's nothing usable to show.
- * [omdbApiKey] is the OMDB_API_KEY secret, used for IMDb's plot and genres.
+ * Returns null for links other than IMDb / Google Books / Google Maps, or when there's nothing
+ * usable to show. [omdbApiKey] is the OMDB_API_KEY secret, used for IMDb's plot and genres;
+ * [booksApiKey] is GOOGLE_BOOKS_API_KEY.
  */
-export async function fetchLinkPreview(input: URL, omdbApiKey?: string): Promise<LinkPreview | null> {
+export async function fetchLinkPreview(input: URL, omdbApiKey?: string, booksApiKey?: string): Promise<LinkPreview | null> {
   const imdbId = imdbIdFromUrl(input);
   if (imdbId) {
     const film = await imdbPreview(imdbId, omdbApiKey);
     // Keep the link as pasted.
     return film ? { ...film, url: input.toString() } : null;
+  }
+  const bookId = googleBooksIdFromUrl(input);
+  if (bookId) {
+    const book = await bookPreview(bookId, booksApiKey);
+    return book ? { ...book, url: input.toString() } : null;
   }
   if (!isMapsUrl(input)) return null;
 

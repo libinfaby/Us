@@ -85,7 +85,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.HangoutDto
 import com.pingucodu.us.data.network.HangoutMemoryDto
 import com.pingucodu.us.data.network.LinkPreviewDto
-import com.pingucodu.us.data.network.MovieSearchResultDto
+import com.pingucodu.us.data.network.SearchResultDto
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import com.pingucodu.us.ui.components.DateField
@@ -236,12 +236,12 @@ fun StashScreen(
             isFetchingPreview = uiState.isFetchingPreview,
             previewError = uiState.previewError,
             onFetchPreview = { viewModel.fetchPreview(normalizeUrl(it)) },
-            movieResults = uiState.movieResults,
-            isSearchingMovies = uiState.isSearchingMovies,
-            movieSearchError = uiState.movieSearchError,
-            onSearchMovies = viewModel::searchMovies,
-            onPickMovie = viewModel::pickMovie,
-            onClearMovieResults = viewModel::clearMovieResults,
+            searchResults = uiState.searchResults,
+            isSearching = uiState.isSearching,
+            searchError = uiState.searchError,
+            onSearch = viewModel::search,
+            onPickSearchResult = viewModel::pickSearchResult,
+            onClearSearchResults = viewModel::clearSearchResults,
             onDismiss = viewModel::dismissDialog,
             onSubmit = viewModel::submitItem,
             onRenameTag = viewModel::renameTag,
@@ -390,7 +390,7 @@ private fun TagFilterChip(tag: String, selected: Boolean, onClick: () -> Unit) {
 
 private fun typeBadgeColor(type: String): Color = when (type) {
     "movie", "todo" -> Pink
-    "place" -> Teal
+    "place", "book" -> Teal
     "link" -> YellowSoft
     else -> Color.White
 }
@@ -400,6 +400,7 @@ private fun typeLabel(type: String): String =
 
 private fun titlePlaceholder(type: String): String = when (type) {
     "movie" -> "movie or show name"
+    "book" -> "book title"
     "link" -> "what's the link about?"
     "place" -> "place to visit"
     "note" -> "note title"
@@ -412,11 +413,13 @@ private fun toggleLabel(type: String): Pair<String, String>? = when (type) {
     "todo" -> "done" to "mark done"
     "place" -> "visited" to "mark visited"
     "movie" -> "watched" to "mark watched"
+    "book" -> "read" to "mark read"
     else -> null
 }
 
 private fun bodyPlaceholder(type: String): String = when (type) {
     "movie" -> "why watch it, or a note for later"
+    "book" -> "why read it, or who suggested it"
     "link" -> "paste the link"
     "place" -> "where is it, or why go?"
     "note" -> "what's on your mind?"
@@ -888,9 +891,9 @@ private fun FindChip(label: String, enabled: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** One film from a name search: its title, and the line that tells same-named films apart. */
+/** One film or book from a name search: its title, and the line that tells same-named ones apart. */
 @Composable
-private fun MovieResultRow(movie: MovieSearchResultDto, onClick: () -> Unit) {
+private fun SearchResultRow(result: SearchResultDto, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Column(
         modifier = Modifier
@@ -900,9 +903,9 @@ private fun MovieResultRow(movie: MovieSearchResultDto, onClick: () -> Unit) {
             .clickableNoRipple(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Text(movie.title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = Ink)
+        Text(result.title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = Ink)
         Spacer(Modifier.height(2.dp))
-        Text(movie.description, style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
+        Text(result.description, style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
     }
 }
 
@@ -935,12 +938,12 @@ private fun StashItemFormDialog(
     isFetchingPreview: Boolean,
     previewError: String?,
     onFetchPreview: (String) -> Unit,
-    movieResults: List<MovieSearchResultDto>?,
-    isSearchingMovies: Boolean,
-    movieSearchError: String?,
-    onSearchMovies: (String) -> Unit,
-    onPickMovie: (MovieSearchResultDto) -> Unit,
-    onClearMovieResults: () -> Unit,
+    searchResults: List<SearchResultDto>?,
+    isSearching: Boolean,
+    searchError: String?,
+    onSearch: (type: String, query: String) -> Unit,
+    onPickSearchResult: (type: String, result: SearchResultDto) -> Unit,
+    onClearSearchResults: () -> Unit,
     onDismiss: () -> Unit,
     onSubmit: (StashItemRequest) -> Unit,
     onRenameTag: (type: String, oldTag: String, newTag: String) -> Unit,
@@ -978,7 +981,8 @@ private fun StashItemFormDialog(
 
     LaunchedEffect(linkPreview) {
         val preview = linkPreview ?: return@LaunchedEffect
-        if (type !in LINK_PREVIEW_TYPES) type = preview.suggestedType
+        // Only IMDb, Google Books and Maps links are fetched, so the preview knows what it is.
+        type = preview.suggestedType
         if (type == "place") {
             // "Cafe X, 12 MG Road, Kochi" -> title "Cafe X", and the address goes in the notes.
             val name = preview.title.substringBefore(',').trim()
@@ -1000,7 +1004,11 @@ private fun StashItemFormDialog(
     NeoBottomSheet(title = if (item == null) "share something" else "edit item", onDismiss = onDismiss) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             STASH_TYPES.forEach { spec ->
-                NeoChoiceChip(label = spec.label, selected = type == spec.value, onClick = { type = spec.value })
+                NeoChoiceChip(label = spec.label, selected = type == spec.value, onClick = {
+                    // Films listed under "movie" have no business staying up after switching to "book".
+                    if (type != spec.value) onClearSearchResults()
+                    type = spec.value
+                })
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -1010,7 +1018,11 @@ private fun StashItemFormDialog(
                 NeoField(
                     value = url,
                     onValueChange = { url = it },
-                    placeholder = if (type == "place") "paste a google maps link" else "paste an imdb link",
+                    placeholder = when (type) {
+                        "place" -> "paste a google maps link"
+                        "book" -> "paste a google books link"
+                        else -> "paste an imdb link"
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { if (url.isNotBlank()) onFetchPreview(url) }),
@@ -1043,8 +1055,8 @@ private fun StashItemFormDialog(
                 titleTyped = true
             },
             placeholder = titlePlaceholder(type),
-            keyboardOptions = if (type == "movie") KeyboardOptions(imeAction = ImeAction.Search) else KeyboardOptions.Default,
-            keyboardActions = KeyboardActions(onSearch = { if (title.isNotBlank()) onSearchMovies(title) }),
+            keyboardOptions = if (type in SEARCHABLE_TYPES) KeyboardOptions(imeAction = ImeAction.Search) else KeyboardOptions.Default,
+            keyboardActions = KeyboardActions(onSearch = { if (title.isNotBlank()) onSearch(type, title) }),
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -1054,29 +1066,29 @@ private fun StashItemFormDialog(
                 uriHandler.openUri(googleMapsSearchUrl(title))
             }
         }
-        if (type == "movie") {
+        if (type in SEARCHABLE_TYPES) {
             Spacer(Modifier.height(10.dp))
             FindChip(
-                label = if (isSearchingMovies) "finding…" else "find movie",
-                enabled = title.isNotBlank() && !isSearchingMovies && !isFetchingPreview,
-            ) { onSearchMovies(title) }
-            if (movieSearchError != null) {
+                label = if (isSearching) "finding…" else "find $type",
+                enabled = title.isNotBlank() && !isSearching && !isFetchingPreview,
+            ) { onSearch(type, title) }
+            if (searchError != null) {
                 Spacer(Modifier.height(8.dp))
-                ErrorBanner(movieSearchError)
+                ErrorBanner(searchError)
             }
-            if (movieResults != null) {
+            if (searchResults != null) {
                 Spacer(Modifier.height(10.dp))
-                if (movieResults.isEmpty()) {
-                    Text("no movies found - try another name", style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
+                if (searchResults.isEmpty()) {
+                    Text("no ${type}s found - try another name", style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
                 } else {
                     Text("pick the right one", style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
                     Spacer(Modifier.height(6.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        movieResults.forEach { movie ->
-                            MovieResultRow(movie) {
-                                // The picked film's title replaces the typed name.
+                        searchResults.forEach { result ->
+                            SearchResultRow(result) {
+                                // The picked title replaces the typed name.
                                 titleTyped = false
-                                onPickMovie(movie)
+                                onPickSearchResult(type, result)
                             }
                         }
                     }
@@ -1085,7 +1097,7 @@ private fun StashItemFormDialog(
                         "none of these",
                         style = PinguCoduType.monoLabel,
                         color = DescriptionGrey,
-                        modifier = Modifier.clickableNoRipple(onClick = onClearMovieResults),
+                        modifier = Modifier.clickableNoRipple(onClick = onClearSearchResults),
                     )
                 }
             }

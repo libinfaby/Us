@@ -16,14 +16,14 @@ import com.pingucodu.us.data.money.UpdateMemoryResult
 import com.pingucodu.us.data.network.HangoutDto
 import com.pingucodu.us.data.network.HangoutMemoryDto
 import com.pingucodu.us.data.network.LinkPreviewDto
-import com.pingucodu.us.data.network.MovieSearchResultDto
+import com.pingucodu.us.data.network.SearchResultDto
 import com.pingucodu.us.data.network.SpecialDateRequest
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import com.pingucodu.us.data.stash.AddStashItemResult
 import com.pingucodu.us.data.stash.DeleteStashItemResult
 import com.pingucodu.us.data.stash.LinkPreviewResult
-import com.pingucodu.us.data.stash.MovieSearchResult
+import com.pingucodu.us.data.stash.SearchResult
 import com.pingucodu.us.data.stash.StashItemsResult
 import com.pingucodu.us.data.stash.StashRepository
 import com.pingucodu.us.data.stash.StashTagsResult
@@ -44,13 +44,17 @@ data class StashTypeSpec(val value: String, val label: String)
 val STASH_TYPES = listOf(
     StashTypeSpec("place", "place"),
     StashTypeSpec("movie", "movie"),
+    StashTypeSpec("book", "book"),
     StashTypeSpec("link", "link"),
     StashTypeSpec("note", "note"),
     StashTypeSpec("todo", "to-do"),
 )
 
 /** Stash types that can carry a link with a fetched title + description. */
-val LINK_PREVIEW_TYPES = setOf("movie", "place")
+val LINK_PREVIEW_TYPES = setOf("movie", "book", "place")
+
+/** Stash types that can be looked up by name with the form's "find" button. */
+val SEARCHABLE_TYPES = setOf("movie", "book")
 
 const val HANGOUTS_CATEGORY = "hangouts"
 const val ALL_CATEGORY = "all"
@@ -79,10 +83,10 @@ data class StashUiState(
     val linkPreview: LinkPreviewDto? = null,
     val isFetchingPreview: Boolean = false,
     val previewError: String? = null,
-    /** Films matching the typed movie name; null = no search shown. */
-    val movieResults: List<MovieSearchResultDto>? = null,
-    val isSearchingMovies: Boolean = false,
-    val movieSearchError: String? = null,
+    /** Films or books matching the typed name; null = no search shown. */
+    val searchResults: List<SearchResultDto>? = null,
+    val isSearching: Boolean = false,
+    val searchError: String? = null,
 
     val hangouts: List<HangoutDto> = emptyList(),
     val hangoutsLoaded: Boolean = false,
@@ -251,10 +255,14 @@ class StashViewModel @Inject constructor(
         _uiState.update { it.withFreshDialog().copy(showAddDialog = true, editingItem = item) }
     }
 
-    /** A link shared from another app: guess movie vs place from the host, open the add sheet
+    /** A link shared from another app: guess movie, book or place from the host, open the add sheet
      * with the link filled in, and start fetching its title + description straight away. */
     fun openAddDialogFromShare(url: String) {
-        val type = if (isMapsLink(url)) "place" else "movie"
+        val type = when {
+            isMapsLink(url) -> "place"
+            isBooksLink(url) -> "book"
+            else -> "movie"
+        }
         _uiState.update { it.withFreshDialog().copy(showAddDialog = true, prefillUrl = url, prefillType = type) }
         fetchPreview(url)
     }
@@ -272,9 +280,9 @@ class StashViewModel @Inject constructor(
         linkPreview = null,
         isFetchingPreview = false,
         previewError = null,
-        movieResults = null,
-        isSearchingMovies = false,
-        movieSearchError = null,
+        searchResults = null,
+        isSearching = false,
+        searchError = null,
     )
 
     private var previewJob: Job? = null
@@ -294,44 +302,49 @@ class StashViewModel @Inject constructor(
         }
     }
 
-    private var movieSearchJob: Job? = null
+    private var searchJob: Job? = null
 
-    /** Looks up films by the name typed in the title field, for the user to pick one. */
-    fun searchMovies(query: String) {
-        movieSearchJob?.cancel()
-        movieSearchJob = viewModelScope.launch {
-            _uiState.update { it.copy(isSearchingMovies = true, movieSearchError = null, movieResults = null) }
-            when (val result = stashRepository.searchMovies(query.trim())) {
-                is MovieSearchResult.Success ->
-                    _uiState.update { it.copy(isSearchingMovies = false, movieResults = result.movies) }
-                is MovieSearchResult.Failed ->
-                    _uiState.update { it.copy(isSearchingMovies = false, movieSearchError = result.message) }
+    /** Looks up films or books ([type]) by the name typed in the title field, for the user to pick one. */
+    fun search(type: String, query: String) {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            _uiState.update { it.copy(isSearching = true, searchError = null, searchResults = null) }
+            when (val result = stashRepository.search(type, query.trim())) {
+                is SearchResult.Success ->
+                    _uiState.update { it.copy(isSearching = false, searchResults = result.results) }
+                is SearchResult.Failed ->
+                    _uiState.update { it.copy(isSearching = false, searchError = result.message) }
             }
         }
     }
 
-    /** Fills the form from a picked film, exactly like fetching its IMDb link would. */
-    fun pickMovie(movie: MovieSearchResultDto) {
-        movieSearchJob?.cancel()
+    /** Fills the form from a picked film or book, exactly like fetching its IMDb / Google Books link would. */
+    fun pickSearchResult(type: String, result: SearchResultDto) {
+        searchJob?.cancel()
         previewJob?.cancel()
         previewJob = viewModelScope.launch {
             _uiState.update {
-                it.copy(movieResults = null, isSearchingMovies = false, movieSearchError = null, isFetchingPreview = true, previewError = null)
+                it.copy(searchResults = null, isSearching = false, searchError = null, isFetchingPreview = true, previewError = null)
             }
-            when (val result = stashRepository.getMoviePreview(movie.id)) {
+            when (val preview = stashRepository.getSearchResultPreview(type, result.id)) {
                 is LinkPreviewResult.Success ->
-                    _uiState.update { it.copy(isFetchingPreview = false, linkPreview = result.preview) }
+                    _uiState.update { it.copy(isFetchingPreview = false, linkPreview = preview.preview) }
                 is LinkPreviewResult.Unreadable ->
-                    _uiState.update { it.copy(isFetchingPreview = false, previewError = result.message) }
+                    _uiState.update { it.copy(isFetchingPreview = false, previewError = preview.message) }
                 is LinkPreviewResult.NetworkError ->
-                    _uiState.update { it.copy(isFetchingPreview = false, previewError = result.message) }
+                    _uiState.update { it.copy(isFetchingPreview = false, previewError = preview.message) }
             }
         }
     }
 
-    fun clearMovieResults() {
-        movieSearchJob?.cancel()
-        _uiState.update { it.copy(movieResults = null, isSearchingMovies = false, movieSearchError = null) }
+    fun clearSearchResults() {
+        searchJob?.cancel()
+        _uiState.update { it.copy(searchResults = null, isSearching = false, searchError = null) }
+    }
+
+    private fun isBooksLink(url: String): Boolean {
+        val lower = url.lowercase()
+        return "books.google." in lower || "play.google.com/store/books" in lower || "google.com/books" in lower
     }
 
     private fun isMapsLink(url: String): Boolean {

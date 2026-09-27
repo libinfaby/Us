@@ -2,13 +2,13 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { requireAuth, type AuthVariables } from '../middleware/auth';
 import { notifyPartner } from '../lib/notify';
-import { fetchLinkPreview, filmPreview, isSupportedPreviewUrl, parseHttpUrl, searchMovies } from '../lib/linkPreview';
+import { bookPreview, fetchLinkPreview, filmPreview, isSupportedPreviewUrl, parseHttpUrl, searchBooks, searchMovies } from '../lib/linkPreview';
 
 export const stashRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
 stashRoutes.use('*', requireAuth);
 
-const TYPES = ['movie', 'link', 'place', 'note', 'todo'] as const;
+const TYPES = ['movie', 'book', 'link', 'place', 'note', 'todo'] as const;
 type StashType = (typeof TYPES)[number];
 
 const STATUSES = ['saved', 'done'] as const;
@@ -56,14 +56,14 @@ function toItemJson(row: StashRow) {
   };
 }
 
-/** Only movies and places keep a link; returns undefined for "not a valid link". */
+/** Only movies, books and places keep a link; returns undefined for "not a valid link". */
 function normalizeUrl(value: unknown): string | null | undefined {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value !== 'string') return undefined;
   return parseHttpUrl(value)?.toString();
 }
 
-const URL_TYPES: readonly StashType[] = ['movie', 'place'];
+const URL_TYPES: readonly StashType[] = ['movie', 'book', 'place'];
 
 function parseNonNegativeInt(value: string | undefined): number | null | undefined {
   if (value === undefined) return undefined;
@@ -128,12 +128,12 @@ stashRoutes.get('/tags', async (c) => {
   return c.json(results.map((r) => ({ type: r.type, tag: r.tag })));
 });
 
-/** Text-only preview (title + description) for an IMDb or Google Maps link - see lib/linkPreview.ts. */
+/** Text-only preview (title + description) for an IMDb, Google Books or Google Maps link - see lib/linkPreview.ts. */
 stashRoutes.get('/preview', async (c) => {
   const url = parseHttpUrl(c.req.query('url') ?? '');
   if (!url) return c.json({ error: 'url must be an http(s) link' }, 400);
-  if (!isSupportedPreviewUrl(url)) return c.json({ error: 'only imdb and google maps links can be fetched' }, 400);
-  const preview = await fetchLinkPreview(url, c.env.OMDB_API_KEY);
+  if (!isSupportedPreviewUrl(url)) return c.json({ error: 'only imdb, google books and google maps links can be fetched' }, 400);
+  const preview = await fetchLinkPreview(url, c.env.OMDB_API_KEY, c.env.GOOGLE_BOOKS_API_KEY);
   if (!preview) return c.json({ error: "couldn't read that link - fill it in by hand" }, 422);
   return c.json(preview);
 });
@@ -154,12 +154,28 @@ stashRoutes.get('/movie-preview', async (c) => {
   return c.json(preview);
 });
 
+/** Books matching a typed name, for the book form's "find" button. */
+stashRoutes.get('/book-search', async (c) => {
+  const query = (c.req.query('q') ?? '').trim().slice(0, 100);
+  if (query.length === 0) return c.json({ error: 'type a book name first' }, 400);
+  const results = await searchBooks(query, c.env.GOOGLE_BOOKS_API_KEY);
+  if (!results) return c.json({ error: "couldn't search right now - try again" }, 502);
+  return c.json(results);
+});
+
+/** Title, blurb, genres and Google Books link for a book picked from /book-search, by its volume id. */
+stashRoutes.get('/book-preview', async (c) => {
+  const preview = await bookPreview(c.req.query('id') ?? '', c.env.GOOGLE_BOOKS_API_KEY);
+  if (!preview) return c.json({ error: "couldn't load that book - fill it in by hand" }, 422);
+  return c.json(preview);
+});
+
 stashRoutes.post('/', async (c) => {
   const body = await c.req.json().catch(() => null);
   const { type, title, body: itemBody, tags, url: rawUrl } = body ?? {};
 
   if (!isType(type) || typeof title !== 'string' || title.trim().length === 0) {
-    return c.json({ error: 'type (movie/link/place/note/todo) and title are required' }, 400);
+    return c.json({ error: 'type (movie/book/link/place/note/todo) and title are required' }, 400);
   }
   if (tags !== undefined && (!Array.isArray(tags) || !tags.every((t) => typeof t === 'string'))) {
     return c.json({ error: 'tags must be an array of strings' }, 400);
