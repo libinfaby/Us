@@ -49,6 +49,25 @@ data class HangoutDto(
     val createdAt: String,
     val totalCents: Long = 0,
     val memories: List<HangoutMemoryDto> = emptyList(),
+    /** Stash items linked to this hangout, newest first. */
+    val stashItems: List<HangoutStashItemDto> = emptyList(),
+    /** Expenses linked to this hangout, most recent date first. */
+    val expenses: List<HangoutExpenseDto> = emptyList(),
+)
+
+/** Just enough of a linked stash item to list it on its hangout card. */
+@Serializable
+data class HangoutStashItemDto(val id: String, val type: String, val title: String, val status: String)
+
+/** Just enough of a linked expense to list it on its hangout card. */
+@Serializable
+data class HangoutExpenseDto(
+    val id: String,
+    val title: String,
+    val amountCents: Long,
+    val expenseDate: String,
+    val paidBy: String,
+    val status: String,
 )
 
 @Serializable

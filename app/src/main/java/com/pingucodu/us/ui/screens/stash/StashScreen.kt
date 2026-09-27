@@ -40,6 +40,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -52,6 +54,8 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,11 +87,14 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pingucodu.us.data.network.HangoutDto
+import com.pingucodu.us.data.network.HangoutExpenseDto
+import com.pingucodu.us.data.network.HangoutStashItemDto
 import com.pingucodu.us.data.network.HangoutMemoryDto
 import com.pingucodu.us.data.network.LinkPreviewDto
 import com.pingucodu.us.data.network.SearchResultDto
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
+import com.pingucodu.us.ui.components.ChevronArrow
 import com.pingucodu.us.ui.components.DateField
 import com.pingucodu.us.ui.components.ErrorBanner
 import com.pingucodu.us.ui.components.NeoBottomSheet
@@ -114,6 +121,7 @@ import com.pingucodu.us.ui.theme.YellowSoft
 import com.pingucodu.us.ui.theme.dashedBorder
 import com.pingucodu.us.ui.theme.hardShadow
 import com.pingucodu.us.ui.util.LocalNameMask
+import kotlinx.coroutines.launch
 import java.net.URLEncoder
 import java.time.Duration
 import java.time.Instant
@@ -191,6 +199,7 @@ fun StashScreen(
                 StashItemsSection(
                     isLoading = uiState.isLoading,
                     items = uiState.items,
+                    hangoutNames = uiState.hangouts.associate { it.id to it.name },
                     tag = uiState.tag,
                     isLoadingMore = uiState.isLoadingMore,
                     loadMoreFailed = uiState.loadMoreFailed,
@@ -242,6 +251,8 @@ fun StashScreen(
             onSearch = viewModel::search,
             onPickSearchResult = viewModel::pickSearchResult,
             onClearSearchResults = viewModel::clearSearchResults,
+            hangouts = uiState.hangouts,
+            onCreateHangout = viewModel::createHangoutAndReturn,
             onDismiss = viewModel::dismissDialog,
             onSubmit = viewModel::submitItem,
             onRenameTag = viewModel::renameTag,
@@ -486,6 +497,7 @@ private fun relativeTime(sqliteDateTime: String): String = try {
 private fun StashItemsSection(
     isLoading: Boolean,
     items: List<StashItemDto>,
+    hangoutNames: Map<String, String>,
     tag: String?,
     isLoadingMore: Boolean,
     loadMoreFailed: Boolean,
@@ -535,6 +547,7 @@ private fun StashItemsSection(
                 items(items, key = { it.id }) { item ->
                     StashItemCard(
                         item = item,
+                        hangoutName = item.hangoutId?.let(hangoutNames::get),
                         onToggle = { onToggle(item.id) },
                         onEdit = { onEdit(item) },
                         onDelete = { onDelete(item) },
@@ -556,6 +569,7 @@ private fun StashItemsSection(
 @Composable
 private fun StashItemCard(
     item: StashItemDto,
+    hangoutName: String?,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -583,6 +597,10 @@ private fun StashItemCard(
         }
         Spacer(Modifier.height(8.dp))
         Text(item.title, style = MaterialTheme.typography.titleMedium)
+        if (hangoutName != null) {
+            Spacer(Modifier.height(4.dp))
+            Text("hangout · $hangoutName", style = PinguCoduType.monoLabel, color = DescriptionGrey)
+        }
         if (!item.body.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
             Text(bodyWithLinks(item.body), style = MaterialTheme.typography.bodySmall)
@@ -791,7 +809,93 @@ private fun HangoutCard(
                 }
             }
             AddMemoryButton(onClick = onAddMemory)
+            if (hangout.stashItems.isNotEmpty()) {
+                LinkedSection(label = "stash", count = hangout.stashItems.size, key = "${hangout.id}-stash") {
+                    hangout.stashItems.forEach { LinkedStashRow(it) }
+                }
+            }
+            if (hangout.expenses.isNotEmpty()) {
+                LinkedSection(label = "expenses", count = hangout.expenses.size, key = "${hangout.id}-expenses") {
+                    hangout.expenses.forEach { LinkedExpenseRow(it) }
+                }
+            }
         }
+    }
+}
+
+/** A collapsible list on a hangout card (its stash items, its expenses) - closed until tapped,
+ * so a long trip's receipts don't bury the memories. */
+@Composable
+private fun LinkedSection(label: String, count: Int, key: String, content: @Composable () -> Unit) {
+    var expanded by rememberSaveable(key) { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        DashedDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth().clickableNoRipple { expanded = !expanded }.padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("$label · $count".uppercase(), style = PinguCoduType.monoLabel, color = Ink, modifier = Modifier.weight(1f))
+            ChevronArrow(pointingUp = expanded)
+        }
+        if (expanded) content()
+    }
+}
+
+@Composable
+private fun LinkedStashRow(item: HangoutStashItemDto) {
+    val done = toggleLabel(item.type) != null && item.status == "done"
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (done) 0.55f else 1f)
+            .border(2.dp, Ink, shape)
+            .background(Color.White, shape)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .border(2.dp, Ink, RoundedCornerShape(7.dp))
+                .background(typeBadgeColor(item.type), RoundedCornerShape(7.dp))
+                .padding(horizontal = 6.dp, vertical = 3.dp),
+        ) {
+            Text(typeLabel(item.type), style = PinguCoduType.monoLabel)
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(item.title, style = MaterialTheme.typography.bodySmall, color = Ink, modifier = Modifier.weight(1f))
+        toggleLabel(item.type)?.takeIf { done }?.let { (doneLabel, _) ->
+            Spacer(Modifier.width(8.dp))
+            Text(doneLabel, style = PinguCoduType.monoLabel, color = DescriptionGrey)
+        }
+    }
+}
+
+@Composable
+private fun LinkedExpenseRow(expense: HangoutExpenseDto) {
+    val settled = expense.status == "settled"
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (settled) 0.55f else 1f)
+            .border(2.dp, Ink, shape)
+            .background(Color.White, shape)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(expense.title, style = MaterialTheme.typography.bodySmall, color = Ink)
+            Spacer(Modifier.height(2.dp))
+            val details = listOfNotNull(
+                formatHangoutDate(expense.expenseDate),
+                "paid by ${LocalNameMask.current.resolve(expense.paidBy)}",
+                "settled".takeIf { settled },
+            )
+            Text(details.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = DescriptionGrey)
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(formatCents(expense.amountCents), style = PinguCoduType.monoLabel, color = Ink)
     }
 }
 
@@ -926,6 +1030,99 @@ private fun SuggestedTagChip(tag: String, selected: Boolean, onClick: () -> Unit
 
 // ---------- add/edit stash item ----------
 
+/** Which hangout a stash item belongs to: a dropdown of the existing ones, plus "+ new" to create
+ * one on the spot - the stash-sheet take on the expense form's hangout picker. */
+@Composable
+private fun HangoutPicker(
+    hangouts: List<HangoutDto>,
+    selectedId: String?,
+    onSelect: (String) -> Unit,
+    onCreateHangout: suspend (String) -> HangoutDto?,
+) {
+    val scope = rememberCoroutineScope()
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showNewInput by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    var isCreating by remember { mutableStateOf(false) }
+    val selectedName = hangouts.firstOrNull { it.id == selectedId }?.name
+
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(modifier = Modifier.weight(1f)) {
+            val shape = RoundedCornerShape(14.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .hardShadow(shape, offsetX = 3.dp, offsetY = 3.dp)
+                    .border(3.dp, Ink, shape)
+                    .background(Color.White, shape)
+                    .clickableNoRipple { menuExpanded = true }
+                    .padding(horizontal = 14.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    selectedName ?: if (hangouts.isEmpty()) "no hangouts yet - add one" else "pick a hangout",
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                    color = if (selectedName != null) Ink else PlaceholderGrey,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(10.dp))
+                ChevronArrow(pointingUp = menuExpanded)
+            }
+            DropdownMenu(expanded = menuExpanded && hangouts.isNotEmpty(), onDismissRequest = { menuExpanded = false }) {
+                hangouts.forEach { h ->
+                    DropdownMenuItem(
+                        text = { Text(h.name, style = MaterialTheme.typography.titleMedium) },
+                        onClick = {
+                            onSelect(h.id)
+                            menuExpanded = false
+                        },
+                    )
+                }
+            }
+        }
+        NeoChoiceChip(
+            label = if (showNewInput) "close" else "+ new",
+            selected = showNewInput,
+            onClick = {
+                showNewInput = !showNewInput
+                newName = ""
+            },
+        )
+    }
+    if (showNewInput) {
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            NeoField(
+                value = newName,
+                onValueChange = { newName = it },
+                placeholder = "new hangout",
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            NeoChoiceChip(
+                label = if (isCreating) "creating…" else "create",
+                selected = true,
+                selectedColor = Pink,
+                onClick = {
+                    val name = newName.trim()
+                    if (name.isNotEmpty() && !isCreating) {
+                        scope.launch {
+                            isCreating = true
+                            val created = onCreateHangout(name)
+                            isCreating = false
+                            if (created != null) {
+                                onSelect(created.id)
+                                showNewInput = false
+                                newName = ""
+                            }
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
 @Composable
 private fun StashItemFormDialog(
     item: StashItemDto?,
@@ -944,6 +1141,8 @@ private fun StashItemFormDialog(
     onSearch: (type: String, query: String) -> Unit,
     onPickSearchResult: (type: String, result: SearchResultDto) -> Unit,
     onClearSearchResults: () -> Unit,
+    hangouts: List<HangoutDto>,
+    onCreateHangout: suspend (String) -> HangoutDto?,
     onDismiss: () -> Unit,
     onSubmit: (StashItemRequest) -> Unit,
     onRenameTag: (type: String, oldTag: String, newTag: String) -> Unit,
@@ -960,6 +1159,8 @@ private fun StashItemFormDialog(
     var tagInput by remember { mutableStateOf("") }
     var tagToManage by remember { mutableStateOf<String?>(null) }
     var tagToConfirmDelete by remember { mutableStateOf<String?>(null) }
+    var inHangout by remember { mutableStateOf(item?.hangoutId != null) }
+    var hangoutId by remember { mutableStateOf(item?.hangoutId) }
 
     val isValid = title.isNotBlank()
 
@@ -1142,6 +1343,23 @@ private fun StashItemFormDialog(
             keyboardActions = KeyboardActions(onDone = { commitTypedTag() }),
             modifier = Modifier.fillMaxWidth(),
         )
+        Spacer(Modifier.height(18.dp))
+
+        SectionLabel("part of a hangout?")
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NeoChoiceChip(label = "no", selected = !inHangout, onClick = { inHangout = false })
+            NeoChoiceChip(label = "yes", selected = inHangout, onClick = { inHangout = true })
+        }
+        if (inHangout) {
+            Spacer(Modifier.height(10.dp))
+            HangoutPicker(
+                hangouts = hangouts,
+                selectedId = hangoutId,
+                onSelect = { hangoutId = it },
+                onCreateHangout = onCreateHangout,
+            )
+        }
         Spacer(Modifier.height(20.dp))
 
         if (dialogError != null) {
@@ -1158,6 +1376,8 @@ private fun StashItemFormDialog(
                     // "" clears a link on edit; types without links just leave it out.
                     url = if (supportsLink) url.trim().takeIf { it.isNotEmpty() }?.let(::normalizeUrl) ?: "" else null,
                     tags = finalTags(),
+                    // "" unlinks it on edit.
+                    hangoutId = hangoutId?.takeIf { inHangout } ?: "",
                 ),
             )
         }

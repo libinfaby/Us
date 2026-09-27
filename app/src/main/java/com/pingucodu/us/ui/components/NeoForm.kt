@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,7 +44,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -115,6 +120,30 @@ fun NeoChoiceChip(label: String, selected: Boolean, onClick: () -> Unit, selecte
         contentAlignment = Alignment.Center,
     ) {
         Text(label, style = MaterialTheme.typography.labelLarge, color = Ink)
+    }
+}
+
+/** A broad, hand-drawn-looking V (or ^ when [pointingUp]) - a dropdown chevron, not a thin Material icon. */
+@Composable
+fun ChevronArrow(pointingUp: Boolean, modifier: Modifier = Modifier, color: Color = Ink) {
+    Canvas(modifier = modifier.size(width = 13.dp, height = 8.dp)) {
+        val strokeWidth = 2.dp.toPx()
+        val path = Path().apply {
+            if (pointingUp) {
+                moveTo(0f, size.height)
+                lineTo(size.width / 2f, 0f)
+                lineTo(size.width, size.height)
+            } else {
+                moveTo(0f, 0f)
+                lineTo(size.width / 2f, size.height)
+                lineTo(size.width, 0f)
+            }
+        }
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
     }
 }
 

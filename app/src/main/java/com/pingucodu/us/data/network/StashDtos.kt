@@ -10,6 +10,8 @@ data class StashItemDto(
     val title: String,
     val body: String?,
     val url: String? = null,
+    /** The hangout this item belongs to, if any. */
+    val hangoutId: String? = null,
     val tags: List<String>,
     val status: String,
     val createdAt: String,
@@ -28,6 +30,8 @@ data class StashItemRequest(
     val body: String? = null,
     /** Movies, books and places only; "" clears it on PATCH (null is simply left out of the JSON). */
     val url: String? = null,
+    /** "" unlinks it from its hangout on PATCH, like [url]. */
+    val hangoutId: String? = null,
     val tags: List<String>? = null,
     val status: String? = null,
 )

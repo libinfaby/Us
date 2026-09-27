@@ -8,12 +8,28 @@ hangoutsRoutes.use('*', requireAuth);
 
 type HangoutRow = { id: string; name: string; start_date: string | null; end_date: string | null; created_at: string };
 type MemoryRow = { id: string; hangout_id: string; author: string; text: string; created_at: string };
+type LinkedStashRow = { id: string; hangout_id: string; type: string; title: string; status: string };
+type LinkedExpenseRow = {
+  id: string;
+  hangout_id: string;
+  title: string;
+  amount_cents: number;
+  expense_date: string;
+  paid_by: string;
+  status: string;
+};
+
+// What a hangout card lists: just enough of each stash item / expense to show a row.
+const LINKED_STASH_SQL = 'SELECT id, hangout_id, type, title, status FROM stash_items';
+const LINKED_EXPENSES_SQL = 'SELECT id, hangout_id, title, amount_cents, expense_date, paid_by, status FROM expenses';
+
+type Linked = { stashItems: LinkedStashRow[]; expenses: LinkedExpenseRow[] };
 
 function toMemoryJson(row: MemoryRow) {
   return { id: row.id, hangoutId: row.hangout_id, author: row.author, text: row.text, createdAt: row.created_at };
 }
 
-function toHangoutJson(row: HangoutRow, totalCents: number, memories: MemoryRow[]) {
+function toHangoutJson(row: HangoutRow, totalCents: number, memories: MemoryRow[], linked: Linked) {
   return {
     id: row.id,
     name: row.name,
@@ -22,7 +38,26 @@ function toHangoutJson(row: HangoutRow, totalCents: number, memories: MemoryRow[
     createdAt: row.created_at,
     totalCents,
     memories: memories.map(toMemoryJson),
+    stashItems: linked.stashItems.map((r) => ({ id: r.id, type: r.type, title: r.title, status: r.status })),
+    expenses: linked.expenses.map((r) => ({
+      id: r.id,
+      title: r.title,
+      amountCents: r.amount_cents,
+      expenseDate: r.expense_date,
+      paidBy: r.paid_by,
+      status: r.status,
+    })),
   };
+}
+
+function groupByHangout<T extends { hangout_id: string }>(rows: T[]): Map<string, T[]> {
+  const byHangout = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = byHangout.get(row.hangout_id) ?? [];
+    list.push(row);
+    byHangout.set(row.hangout_id, list);
+  }
+  return byHangout;
 }
 
 async function loadHangout(env: Env, id: string) {
@@ -36,28 +71,41 @@ async function loadHangout(env: Env, id: string) {
   )
     .bind(id)
     .all<MemoryRow>();
-  return toHangoutJson(row, totalRow?.total ?? 0, memories);
+  const [{ results: stashItems }, { results: expenses }] = await Promise.all([
+    env.DB.prepare(`${LINKED_STASH_SQL} WHERE hangout_id = ? ORDER BY created_at DESC`).bind(id).all<LinkedStashRow>(),
+    env.DB.prepare(`${LINKED_EXPENSES_SQL} WHERE hangout_id = ? ORDER BY expense_date DESC, created_at DESC`)
+      .bind(id)
+      .all<LinkedExpenseRow>(),
+  ]);
+  return toHangoutJson(row, totalRow?.total ?? 0, memories, { stashItems, expenses });
 }
 
 hangoutsRoutes.get('/', async (c) => {
-  const [{ results: hangoutRows }, { results: sumRows }, { results: memoryRows }] = await Promise.all([
+  const [hangoutsRes, sumsRes, memoriesRes, stashRes, expensesRes] = await Promise.all([
     c.env.DB.prepare('SELECT * FROM hangouts ORDER BY created_at DESC').all<HangoutRow>(),
     c.env.DB.prepare(
       'SELECT hangout_id, SUM(amount_cents) as total FROM expenses WHERE hangout_id IS NOT NULL GROUP BY hangout_id',
     ).all<{ hangout_id: string; total: number }>(),
     c.env.DB.prepare('SELECT * FROM hangout_memories ORDER BY created_at ASC').all<MemoryRow>(),
+    c.env.DB.prepare(`${LINKED_STASH_SQL} WHERE hangout_id IS NOT NULL ORDER BY created_at DESC`).all<LinkedStashRow>(),
+    c.env.DB.prepare(
+      `${LINKED_EXPENSES_SQL} WHERE hangout_id IS NOT NULL ORDER BY expense_date DESC, created_at DESC`,
+    ).all<LinkedExpenseRow>(),
   ]);
+  const hangoutRows = hangoutsRes.results;
 
-  const totals = new Map(sumRows.map((r) => [r.hangout_id, r.total]));
-  const memoriesByHangout = new Map<string, MemoryRow[]>();
-  for (const m of memoryRows) {
-    const list = memoriesByHangout.get(m.hangout_id) ?? [];
-    list.push(m);
-    memoriesByHangout.set(m.hangout_id, list);
-  }
+  const totals = new Map(sumsRes.results.map((r) => [r.hangout_id, r.total]));
+  const memoriesByHangout = groupByHangout(memoriesRes.results);
+  const stashByHangout = groupByHangout(stashRes.results);
+  const expensesByHangout = groupByHangout(expensesRes.results);
 
   return c.json(
-    hangoutRows.map((row) => toHangoutJson(row, totals.get(row.id) ?? 0, memoriesByHangout.get(row.id) ?? [])),
+    hangoutRows.map((row) =>
+      toHangoutJson(row, totals.get(row.id) ?? 0, memoriesByHangout.get(row.id) ?? [], {
+        stashItems: stashByHangout.get(row.id) ?? [],
+        expenses: expensesByHangout.get(row.id) ?? [],
+      }),
+    ),
   );
 });
 
@@ -101,6 +149,7 @@ hangoutsRoutes.delete('/:id', async (c) => {
 
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE expenses SET hangout_id = NULL WHERE hangout_id = ?').bind(id),
+    c.env.DB.prepare('UPDATE stash_items SET hangout_id = NULL WHERE hangout_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM hangout_memories WHERE hangout_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM hangouts WHERE id = ?').bind(id),
   ]);

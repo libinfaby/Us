@@ -131,6 +131,8 @@ class StashViewModel @Inject constructor(
         }
         refresh()
         refreshAllTags()
+        // Cards show the name of the hangout they belong to, and the add sheet lists them.
+        refreshHangouts()
     }
 
     fun setCategory(category: String) {
@@ -143,7 +145,8 @@ class StashViewModel @Inject constructor(
             next.copy(tag = it.tag?.takeIf { tag -> tag in next.filterTags })
         }
         if (category == HANGOUTS_CATEGORY) {
-            if (!_uiState.value.hangoutsLoaded) refreshHangouts()
+            // Always refetch: expenses added on the Money screen show up on the cards too.
+            refreshHangouts()
         } else {
             refresh()
         }
@@ -161,7 +164,11 @@ class StashViewModel @Inject constructor(
 
     /** After a mutation, re-fetch everything already scrolled in (in one request) rather than
      * snapping back to page one, so the list updates in place and keeps its scroll position. */
-    private fun reloadLoaded() = loadItems(limit = maxOf(PAGE_SIZE, _uiState.value.items.size))
+    private fun reloadLoaded() {
+        loadItems(limit = maxOf(PAGE_SIZE, _uiState.value.items.size))
+        // An added, edited or removed item can change what a hangout card lists.
+        refreshHangouts()
+    }
 
     private fun loadItems(limit: Int) {
         val state = _uiState.value
@@ -450,6 +457,20 @@ class StashViewModel @Inject constructor(
 
     fun openEditHangoutDialog(hangout: HangoutDto) {
         _uiState.update { it.copy(showHangoutDialog = true, editingHangout = hangout, hangoutDialogError = null) }
+    }
+
+    /** "+ new" in the add sheet's hangout picker: creates it and hands it back to be selected. */
+    suspend fun createHangoutAndReturn(name: String): HangoutDto? {
+        return when (val result = expenseRepository.createHangout(name)) {
+            is CreateHangoutResult.Success -> {
+                _uiState.update { it.copy(hangouts = it.hangouts + result.hangout, dialogError = null) }
+                result.hangout
+            }
+            is CreateHangoutResult.NetworkError -> {
+                _uiState.update { it.copy(dialogError = result.message) }
+                null
+            }
+        }
     }
 
     fun dismissHangoutDialog() {

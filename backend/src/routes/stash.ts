@@ -35,6 +35,7 @@ type StashRow = {
   title: string;
   body: string | null;
   url: string | null;
+  hangout_id: string | null;
   tags_json: string;
   status: StashStatus;
   created_at: string;
@@ -49,6 +50,7 @@ function toItemJson(row: StashRow) {
     title: row.title,
     body: row.body,
     url: row.url,
+    hangoutId: row.hangout_id,
     tags: JSON.parse(row.tags_json) as string[],
     status: row.status,
     createdAt: row.created_at,
@@ -64,6 +66,14 @@ function normalizeUrl(value: unknown): string | null | undefined {
 }
 
 const URL_TYPES: readonly StashType[] = ['movie', 'book', 'place'];
+
+/** A hangout id from a request body: null for none, undefined for an id that doesn't exist. */
+async function resolveHangoutId(env: Env, value: unknown): Promise<string | null | undefined> {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') return undefined;
+  const row = await env.DB.prepare('SELECT id FROM hangouts WHERE id = ?').bind(value).first();
+  return row ? value : undefined;
+}
 
 function parseNonNegativeInt(value: string | undefined): number | null | undefined {
   if (value === undefined) return undefined;
@@ -172,7 +182,7 @@ stashRoutes.get('/book-preview', async (c) => {
 
 stashRoutes.post('/', async (c) => {
   const body = await c.req.json().catch(() => null);
-  const { type, title, body: itemBody, tags, url: rawUrl } = body ?? {};
+  const { type, title, body: itemBody, tags, url: rawUrl, hangoutId: rawHangoutId } = body ?? {};
 
   if (!isType(type) || typeof title !== 'string' || title.trim().length === 0) {
     return c.json({ error: 'type (movie/book/link/place/note/todo) and title are required' }, 400);
@@ -183,10 +193,12 @@ stashRoutes.post('/', async (c) => {
 
   const url = normalizeUrl(rawUrl);
   if (url === undefined) return c.json({ error: 'url must be an http(s) link' }, 400);
+  const hangoutId = await resolveHangoutId(c.env, rawHangoutId);
+  if (hangoutId === undefined) return c.json({ error: 'unknown hangoutId' }, 400);
 
   const id = crypto.randomUUID();
   await c.env.DB.prepare(
-    `INSERT INTO stash_items (id, type, author, title, body, url, tags_json) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO stash_items (id, type, author, title, body, url, hangout_id, tags_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -195,6 +207,7 @@ stashRoutes.post('/', async (c) => {
       title.trim(),
       typeof itemBody === 'string' ? itemBody : null,
       URL_TYPES.includes(type) ? url : null,
+      hangoutId,
       JSON.stringify(tags ?? []),
     )
     .run();
@@ -230,6 +243,8 @@ stashRoutes.patch('/:id', async (c) => {
   const itemBody = body.body !== undefined ? body.body : existing.body;
   const url = body.url !== undefined ? normalizeUrl(body.url) : existing.url;
   if (url === undefined) return c.json({ error: 'url must be an http(s) link' }, 400);
+  const hangoutId = body.hangoutId !== undefined ? await resolveHangoutId(c.env, body.hangoutId) : existing.hangout_id;
+  if (hangoutId === undefined) return c.json({ error: 'unknown hangoutId' }, 400);
   let tagsJson = existing.tags_json;
   if (body.tags !== undefined) {
     if (!Array.isArray(body.tags) || !body.tags.every((t: unknown) => typeof t === 'string')) {
@@ -239,10 +254,10 @@ stashRoutes.patch('/:id', async (c) => {
   }
 
   await c.env.DB.prepare(
-    `UPDATE stash_items SET type = ?, title = ?, body = ?, url = ?, tags_json = ?, status = ?, updated_at = datetime('now')
+    `UPDATE stash_items SET type = ?, title = ?, body = ?, url = ?, hangout_id = ?, tags_json = ?, status = ?, updated_at = datetime('now')
      WHERE id = ?`,
   )
-    .bind(type, title, typeof itemBody === 'string' ? itemBody : null, URL_TYPES.includes(type) ? url : null, tagsJson, status, id)
+    .bind(type, title, typeof itemBody === 'string' ? itemBody : null, URL_TYPES.includes(type) ? url : null, hangoutId, tagsJson, status, id)
     .run();
 
   const row = await c.env.DB.prepare('SELECT * FROM stash_items WHERE id = ?').bind(id).first<StashRow>();
