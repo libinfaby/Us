@@ -606,10 +606,13 @@ private fun StashItemCard(
                     onClick = onToggle,
                 )
             }
-            if (item.url != null) {
+            // Link items keep their URL in the note, so fall back to the first one found there.
+            val linkUrl = item.url
+                ?: if (item.type == "link") item.body?.let { URL_REGEX.find(it)?.value }?.let(::normalizeUrl) else null
+            if (linkUrl != null) {
                 val uriHandler = LocalUriHandler.current
                 PillActionButton(label = "link ↗", background = YellowSoft, contentColor = Ink, onClick = {
-                    runCatching { uriHandler.openUri(item.url) }
+                    runCatching { uriHandler.openUri(linkUrl) }
                 })
             }
             PillActionButton(label = "edit", background = Color.White, contentColor = Ink, onClick = onEdit)
