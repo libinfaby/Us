@@ -42,9 +42,9 @@ import javax.inject.Inject
 data class StashTypeSpec(val value: String, val label: String)
 
 val STASH_TYPES = listOf(
+    StashTypeSpec("place", "place"),
     StashTypeSpec("movie", "movie"),
     StashTypeSpec("link", "link"),
-    StashTypeSpec("place", "place"),
     StashTypeSpec("note", "note"),
     StashTypeSpec("todo", "to-do"),
 )
