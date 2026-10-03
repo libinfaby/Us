@@ -38,7 +38,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,6 +61,7 @@ import com.pingucodu.us.ui.theme.Pink
 import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.SkeletonCard
 import com.pingucodu.us.ui.theme.Teal
+import com.pingucodu.us.ui.theme.fadeWithHardShadow
 import com.pingucodu.us.ui.theme.hardShadow
 import java.time.LocalDate
 import java.time.Period
@@ -217,7 +217,7 @@ fun DatesScreen(onBack: () -> Unit, modifier: Modifier = Modifier, viewModel: Da
                                         date = date,
                                         onClick = { viewModel.openEditForm(date) },
                                         onLongClick = { toDelete = date },
-                                        modifier = Modifier.alpha(0.6f),
+                                        modifier = Modifier.fadeWithHardShadow(0.6f),
                                     )
                                 }
                             }

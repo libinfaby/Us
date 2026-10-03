@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -32,6 +33,8 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -54,6 +57,26 @@ fun Modifier.hardShadow(
         drawOutline(outline, color = color)
     }
 }
+
+/**
+ * Fades a component that carries a [hardShadow] (pass the same offsets). A plain `alpha()` renders
+ * into a layer the size of the component, which cuts off the shadow peeking past its edge; this
+ * grows the faded layer by the shadow offset while the component keeps its size in the layout.
+ * Put it before [hardShadow] in the chain.
+ */
+fun Modifier.fadeWithHardShadow(
+    alpha: Float,
+    offsetX: Dp = 5.dp,
+    offsetY: Dp = 5.dp,
+): Modifier = this
+    .layout { measurable, constraints ->
+        val dx = offsetX.roundToPx()
+        val dy = offsetY.roundToPx()
+        val placeable = measurable.measure(constraints.offset(dx, dy))
+        layout(placeable.width - dx, placeable.height - dy) { placeable.place(0, 0) }
+    }
+    .alpha(alpha)
+    .padding(end = offsetX, bottom = offsetY)
 
 val QuickChipSpacing = Arrangement.spacedBy(8.dp)
 
