@@ -17,7 +17,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +35,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.layout.layout
@@ -77,6 +82,39 @@ fun Modifier.fadeWithHardShadow(
     }
     .alpha(alpha)
     .padding(end = offsetX, bottom = offsetY)
+
+/** How long a [rememberFlash] pulse runs - callers clear the highlight after this. */
+const val FLASH_DURATION_MS = 1100L
+
+/**
+ * Progress (0..1) of a "here it is" pulse: two quick pops when [active] turns true, e.g. for the
+ * card a hangout link just jumped to. Feed it to [flashPop].
+ */
+@Composable
+fun rememberFlash(active: Boolean): State<Float> {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(active) {
+        if (active) {
+            repeat(2) {
+                progress.animateTo(1f, tween(200))
+                progress.animateTo(0f, tween(350))
+            }
+        } else {
+            progress.snapTo(0f)
+        }
+    }
+    return progress.asState()
+}
+
+/**
+ * Draws a [rememberFlash] pulse as the component briefly growing and settling back. The progress
+ * is only read in the layer block, so a pulse never recomposes or re-lays-out the card.
+ */
+fun Modifier.flashPop(progress: State<Float>): Modifier = graphicsLayer {
+    val scale = 1f + 0.04f * progress.value
+    scaleX = scale
+    scaleY = scale
+}
 
 val QuickChipSpacing = Arrangement.spacedBy(8.dp)
 

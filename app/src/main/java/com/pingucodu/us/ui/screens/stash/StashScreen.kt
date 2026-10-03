@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -51,8 +52,10 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -109,9 +112,14 @@ import com.pingucodu.us.ui.theme.PlaceholderGrey
 import com.pingucodu.us.ui.theme.SkeletonStashItemCard
 import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.YellowSoft
+import com.pingucodu.us.ui.theme.FLASH_DURATION_MS
+import com.pingucodu.us.ui.theme.flashPop
 import com.pingucodu.us.ui.theme.hardShadow
+import com.pingucodu.us.ui.theme.rememberFlash
 import com.pingucodu.us.ui.util.LocalNameMask
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import java.net.URLEncoder
 import java.time.Duration
 import java.time.Instant
@@ -124,12 +132,15 @@ private val SQLITE_DATETIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 private const val LOAD_MORE_THRESHOLD = 3
 
 /** [sharedUrl] is a link shared into the app from another app; it opens the add sheet once and
- * is then cleared through [onSharedUrlConsumed]. */
+ * is then cleared through [onSharedUrlConsumed]. [focusItem] likewise scrolls to one item and
+ * flashes it - from tapping it on a hangout card. */
 @Composable
 fun StashScreen(
     modifier: Modifier = Modifier,
     sharedUrl: String? = null,
     onSharedUrlConsumed: () -> Unit = {},
+    focusItem: StashFocus? = null,
+    onFocusItemConsumed: () -> Unit = {},
     viewModel: StashViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -140,6 +151,36 @@ fun StashScreen(
         }
     }
     var itemToDelete by remember { mutableStateOf<StashItemDto?>(null) }
+    // A fresh scroll position per filter, as when the list was rebuilt on each switch.
+    val listState = key(uiState.category, uiState.tag) { rememberLazyListState() }
+    // The item being scrolled to and flashed, once it's in the loaded list.
+    var flashItemId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(focusItem) {
+        if (focusItem != null) {
+            viewModel.focusItem(focusItem)
+            onFocusItemConsumed()
+        }
+    }
+    LaunchedEffect(uiState.focusItemId, uiState.isLoading) {
+        val id = uiState.focusItemId
+        if (id != null && !uiState.isLoading) {
+            viewModel.consumeFocus()
+            if (uiState.items.any { it.id == id }) flashItemId = id
+        }
+    }
+    // Its own effect, keyed on the target alone - consumeFocus() above would otherwise cancel
+    // the scroll halfway through.
+    LaunchedEffect(flashItemId) {
+        val id = flashItemId ?: return@LaunchedEffect
+        val index = uiState.items.indexOfFirst { it.id == id }
+        if (index >= 0) {
+            snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
+            listState.animateScrollToItem(index)
+        }
+        delay(FLASH_DURATION_MS)
+        flashItemId = null
+    }
 
     // Hangouts are managed on their own tab - refetch on entry so cards and the add sheet's
     // hangout picker pick up ones created or renamed there.
@@ -170,6 +211,8 @@ fun StashScreen(
             }
 
             StashItemsSection(
+                listState = listState,
+                flashItemId = flashItemId,
                 isLoading = uiState.isLoading,
                 items = uiState.items,
                 hangoutNames = uiState.hangouts.associate { it.id to it.name },
@@ -407,6 +450,8 @@ internal fun relativeTime(sqliteDateTime: String): String = try {
 
 @Composable
 private fun StashItemsSection(
+    listState: LazyListState,
+    flashItemId: String?,
     isLoading: Boolean,
     items: List<StashItemDto>,
     hangoutNames: Map<String, String>,
@@ -439,7 +484,6 @@ private fun StashItemsSection(
             // Items arrive page by page, already ordered by the server (pending first, done ones
             // sunk to the bottom). Ask for the next page a few cards before the end so it's usually
             // in before the user gets there.
-            val listState = rememberLazyListState()
             val nearEnd by remember {
                 derivedStateOf {
                     val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -459,6 +503,7 @@ private fun StashItemsSection(
                 items(items, key = { it.id }) { item ->
                     StashItemCard(
                         item = item,
+                        highlighted = item.id == flashItemId,
                         hangoutName = item.hangoutId?.let(hangoutNames::get),
                         onToggle = { onToggle(item.id) },
                         onEdit = { onEdit(item) },
@@ -481,14 +526,17 @@ private fun StashItemsSection(
 @Composable
 private fun StashItemCard(
     item: StashItemDto,
+    highlighted: Boolean,
     hangoutName: String?,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val isMuted = toggleLabel(item.type) != null && item.status == "done"
+    val flash = rememberFlash(highlighted)
     Column(
         modifier = Modifier
+            .flashPop(flash)
             .fillMaxWidth()
             .alpha(if (isMuted) 0.55f else 1f)
             .let { if (isMuted) it else it.hardShadow(CardShape) }

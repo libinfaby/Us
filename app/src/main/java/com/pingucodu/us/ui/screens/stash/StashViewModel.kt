@@ -47,6 +47,11 @@ val SEARCHABLE_TYPES = setOf("movie", "book")
 
 const val ALL_CATEGORY = "all"
 private const val PAGE_SIZE = 10
+/** How far [StashViewModel.focusItem] pages through looking for an item before giving up. */
+private const val FOCUS_MAX_PAGES = 30
+
+/** A stash item to scroll to and flash - from tapping it on a hangout card. */
+data class StashFocus(val itemId: String, val type: String)
 
 data class StashUiState(
     val isLoading: Boolean = true,
@@ -77,6 +82,8 @@ data class StashUiState(
 
     /** For the hangout name on each card and the add sheet's hangout picker. */
     val hangouts: List<HangoutDto> = emptyList(),
+    /** Set until the screen has scrolled to it (see [StashViewModel.focusItem]). */
+    val focusItemId: String? = null,
 ) {
     val typeFilter: String? get() = if (category == ALL_CATEGORY) null else category
 
@@ -153,6 +160,39 @@ class StashViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
             }
         }
+    }
+
+    /** Shows [focus]'s item: switches to its type with no tag filter, then pages through until the
+     * item is loaded so the screen can scroll to it. */
+    fun focusItem(focus: StashFocus) {
+        itemsJob?.cancel()
+        // Loading is set right away so the screen doesn't look for the item in the emptied list.
+        _uiState.update {
+            it.copy(category = focus.type, tag = null, items = emptyList(), isLoading = true, focusItemId = focus.itemId)
+        }
+        itemsJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingMore = false, loadMoreFailed = false, errorMessage = null) }
+            val loaded = mutableListOf<StashItemDto>()
+            var endReached = false
+            for (page in 0 until FOCUS_MAX_PAGES) {
+                when (val result = stashRepository.getItems(status = "everything", type = focus.type, limit = PAGE_SIZE, offset = loaded.size)) {
+                    is StashItemsResult.Success -> {
+                        loaded += result.items
+                        endReached = result.items.size < PAGE_SIZE
+                    }
+                    is StashItemsResult.NetworkError -> {
+                        _uiState.update { it.copy(isLoading = false, items = loaded.distinctBy { i -> i.id }, errorMessage = result.message) }
+                        return@launch
+                    }
+                }
+                if (endReached || loaded.any { it.id == focus.itemId }) break
+            }
+            _uiState.update { it.copy(isLoading = false, items = loaded.distinctBy { i -> i.id }, endReached = endReached) }
+        }
+    }
+
+    fun consumeFocus() {
+        _uiState.update { it.copy(focusItemId = null) }
     }
 
     /** Appends the next page - called as the list nears its bottom, Instagram-style. */

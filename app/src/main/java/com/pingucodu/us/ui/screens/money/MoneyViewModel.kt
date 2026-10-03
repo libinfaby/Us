@@ -18,6 +18,7 @@ import com.pingucodu.us.data.network.ExpenseRequest
 import com.pingucodu.us.data.network.HangoutDto
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +34,9 @@ enum class ExpenseStatusFilter(val wireValue: String, val label: String) {
     EVERYTHING("everything", "everything"),
 }
 
+/** An expense to scroll to and flash - from tapping it on a hangout card. */
+data class ExpenseFocus(val expenseId: String, val hangoutId: String, val settled: Boolean)
+
 data class MoneyUiState(
     val isLoading: Boolean = true,
     val expenses: List<ExpenseDto> = emptyList(),
@@ -47,6 +51,8 @@ data class MoneyUiState(
     val editingExpense: ExpenseDto? = null,
     val dialogError: String? = null,
     val isSubmitting: Boolean = false,
+    /** Set until the screen has scrolled to it (see [MoneyViewModel.focusExpense]). */
+    val focusExpenseId: String? = null,
 )
 
 @HiltViewModel
@@ -85,6 +91,33 @@ class MoneyViewModel @Inject constructor(
         refresh()
     }
 
+    /** Shows [focus]'s expense: narrows to its hangout and, if the status filter would hide it,
+     * widens to everything - then the screen scrolls to it once the list is in. */
+    fun focusExpense(focus: ExpenseFocus) {
+        _uiState.update {
+            val statusShowsIt = when (it.statusFilter) {
+                ExpenseStatusFilter.OPEN -> !focus.settled
+                ExpenseStatusFilter.SETTLED -> focus.settled
+                ExpenseStatusFilter.EVERYTHING -> true
+            }
+            it.copy(
+                hangoutFilter = focus.hangoutId,
+                showNoHangoutOnly = false,
+                statusFilter = if (statusShowsIt) it.statusFilter else ExpenseStatusFilter.EVERYTHING,
+                expenses = emptyList(),
+                // Set loading now, not when refresh's coroutine starts, so the screen doesn't
+                // look for the expense in the empty list before the fetch has even begun.
+                isLoading = true,
+                focusExpenseId = focus.expenseId,
+            )
+        }
+        refresh()
+    }
+
+    fun consumeFocus() {
+        _uiState.update { it.copy(focusExpenseId = null) }
+    }
+
     /** Called when the Money tab (re)enters composition - drops the stale list first so the
      * screen shows skeleton cards instead of the pull-to-refresh spinner, which should only
      * appear when the user actually pulls down to refresh. */
@@ -93,10 +126,15 @@ class MoneyViewModel @Inject constructor(
         refresh()
     }
 
+    private var refreshJob: Job? = null
+
     fun refresh() {
         val statusFilter = _uiState.value.statusFilter
         val hangoutFilter = _uiState.value.hangoutFilter
-        viewModelScope.launch {
+        // A newer refresh means the filters changed - don't let an older fetch land after it
+        // and swap in a list for the previous filters.
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             val (expensesResult, balanceResult, hangoutsResult) = coroutineScope {
                 val expensesDeferred = async { expenseRepository.getExpenses(statusFilter.wireValue, hangoutFilter) }

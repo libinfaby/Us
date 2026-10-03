@@ -62,9 +62,11 @@ import com.pingucodu.us.ui.screens.dates.DatesScreen
 import com.pingucodu.us.ui.screens.hangouts.HangoutsScreen
 import com.pingucodu.us.ui.screens.home.HomeScreen
 import com.pingucodu.us.ui.screens.login.LoginScreen
+import com.pingucodu.us.ui.screens.money.ExpenseFocus
 import com.pingucodu.us.ui.screens.money.MoneyScreen
 import com.pingucodu.us.ui.screens.money.MoneySection
 import com.pingucodu.us.ui.screens.settings.SettingsScreen
+import com.pingucodu.us.ui.screens.stash.StashFocus
 import com.pingucodu.us.ui.screens.stash.StashScreen
 import com.pingucodu.us.ui.theme.AvatarShape
 import com.pingucodu.us.ui.theme.BorderWidth
@@ -118,6 +120,8 @@ private fun MainScreen(
     // One-shot hand-offs into a tab: consumed by the destination screen once it has acted on them.
     var moneySection by remember { mutableStateOf<MoneySection?>(null) }
     var stashSharedUrl by remember { mutableStateOf<String?>(null) }
+    var expenseFocus by remember { mutableStateOf<ExpenseFocus?>(null) }
+    var stashFocus by remember { mutableStateOf<StashFocus?>(null) }
     fun navigateToTab(tab: Tab) {
         navController.navigate(tab.route) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -197,14 +201,37 @@ private fun MainScreen(
                 }
                 composable(Tab.Money.route) {
                     TabFrame(Tab.Money) {
-                        MoneyScreen(initialSection = moneySection, onInitialSectionConsumed = { moneySection = null })
+                        MoneyScreen(
+                            initialSection = moneySection,
+                            onInitialSectionConsumed = { moneySection = null },
+                            focusExpense = expenseFocus,
+                            onFocusExpenseConsumed = { expenseFocus = null },
+                        )
                     }
                 }
                 composable(Tab.Cycle.route) { TabFrame(Tab.Cycle) { CycleScreen() } }
-                composable(Tab.Hangouts.route) { TabFrame(Tab.Hangouts) { HangoutsScreen() } }
+                composable(Tab.Hangouts.route) {
+                    TabFrame(Tab.Hangouts) {
+                        HangoutsScreen(
+                            onOpenStashItem = { item ->
+                                stashFocus = StashFocus(item.id, item.type)
+                                navigateToTab(Tab.Stash)
+                            },
+                            onOpenExpense = { expense, hangoutId ->
+                                expenseFocus = ExpenseFocus(expense.id, hangoutId, settled = expense.status == "settled")
+                                navigateToTab(Tab.Money)
+                            },
+                        )
+                    }
+                }
                 composable(Tab.Stash.route) {
                     TabFrame(Tab.Stash) {
-                        StashScreen(sharedUrl = stashSharedUrl, onSharedUrlConsumed = { stashSharedUrl = null })
+                        StashScreen(
+                            sharedUrl = stashSharedUrl,
+                            onSharedUrlConsumed = { stashSharedUrl = null },
+                            focusItem = stashFocus,
+                            onFocusItemConsumed = { stashFocus = null },
+                        )
                     }
                 }
                 // Pushed screens paint their own background so the tab underneath doesn't show

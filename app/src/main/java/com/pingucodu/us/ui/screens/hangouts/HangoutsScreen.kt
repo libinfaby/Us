@@ -77,9 +77,14 @@ import java.util.Locale
 private val HANGOUT_PALETTE = listOf(Pink, Teal, YellowSoft)
 
 /** Trips, meets and nights out: each hangout groups its memories, plus the stash items and
- * expenses linked to it from the other tabs. */
+ * expenses linked to it from the other tabs - tapping one of those opens it on its own tab. */
 @Composable
-fun HangoutsScreen(modifier: Modifier = Modifier, viewModel: HangoutsViewModel = hiltViewModel()) {
+fun HangoutsScreen(
+    onOpenStashItem: (HangoutStashItemDto) -> Unit,
+    onOpenExpense: (expense: HangoutExpenseDto, hangoutId: String) -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: HangoutsViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.uiState.collectAsState()
     var hangoutToDelete by remember { mutableStateOf<HangoutDto?>(null) }
     var memoryToDelete by remember { mutableStateOf<Pair<HangoutDto, HangoutMemoryDto>?>(null) }
@@ -111,6 +116,8 @@ fun HangoutsScreen(modifier: Modifier = Modifier, viewModel: HangoutsViewModel =
                 onEditMemory = viewModel::openEditMemoryDialog,
                 onDeleteMemory = { hangout, memory -> memoryToDelete = hangout to memory },
                 onLongPressHangout = { hangoutToDelete = it },
+                onOpenStashItem = onOpenStashItem,
+                onOpenExpense = onOpenExpense,
             )
         }
     }
@@ -196,6 +203,8 @@ private fun HangoutsSection(
     onEditMemory: (HangoutDto, HangoutMemoryDto) -> Unit,
     onDeleteMemory: (HangoutDto, HangoutMemoryDto) -> Unit,
     onLongPressHangout: (HangoutDto) -> Unit,
+    onOpenStashItem: (HangoutStashItemDto) -> Unit,
+    onOpenExpense: (HangoutExpenseDto, String) -> Unit,
 ) {
     if (isLoading) {
         Column(
@@ -226,6 +235,8 @@ private fun HangoutsSection(
                 onEditMemory = { onEditMemory(hangout, it) },
                 onDeleteMemory = { onDeleteMemory(hangout, it) },
                 onLongPress = { onLongPressHangout(hangout) },
+                onOpenStashItem = onOpenStashItem,
+                onOpenExpense = { onOpenExpense(it, hangout.id) },
             )
         }
         if (hangouts.isEmpty()) {
@@ -265,6 +276,8 @@ private fun HangoutCard(
     onEditMemory: (HangoutMemoryDto) -> Unit,
     onDeleteMemory: (HangoutMemoryDto) -> Unit,
     onLongPress: () -> Unit,
+    onOpenStashItem: (HangoutStashItemDto) -> Unit,
+    onOpenExpense: (HangoutExpenseDto) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(18.dp)
@@ -324,7 +337,7 @@ private fun HangoutCard(
                     count = hangout.stashItems.size,
                     key = "${hangout.id}-stash",
                 ) {
-                    hangout.stashItems.forEach { LinkedStashRow(it) }
+                    hangout.stashItems.forEach { LinkedStashRow(it, onClick = { onOpenStashItem(it) }) }
                 }
             }
             if (hangout.expenses.isNotEmpty()) {
@@ -333,7 +346,7 @@ private fun HangoutCard(
                     count = hangout.expenses.size,
                     key = "${hangout.id}-expenses",
                 ) {
-                    hangout.expenses.forEach { LinkedExpenseRow(it) }
+                    hangout.expenses.forEach { LinkedExpenseRow(it, onClick = { onOpenExpense(it) }) }
                 }
             }
         }
@@ -350,7 +363,6 @@ private fun LinkedSection(label: String, count: Int, key: String, content: @Comp
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .hardShadow(shape, offsetX = 3.dp, offsetY = 3.dp)
             .border(BorderWidth, Ink, shape)
             .background(Color.White, shape)
             .clip(shape),
@@ -381,7 +393,7 @@ private fun LinkedSection(label: String, count: Int, key: String, content: @Comp
 }
 
 @Composable
-private fun LinkedStashRow(item: HangoutStashItemDto) {
+private fun LinkedStashRow(item: HangoutStashItemDto, onClick: () -> Unit) {
     val done = toggleLabel(item.type) != null && item.status == "done"
     val shape = RoundedCornerShape(12.dp)
     Row(
@@ -390,6 +402,7 @@ private fun LinkedStashRow(item: HangoutStashItemDto) {
             .alpha(if (done) 0.55f else 1f)
             .border(2.dp, Ink, shape)
             .background(Color.White, shape)
+            .clickableNoRipple(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -411,7 +424,7 @@ private fun LinkedStashRow(item: HangoutStashItemDto) {
 }
 
 @Composable
-private fun LinkedExpenseRow(expense: HangoutExpenseDto) {
+private fun LinkedExpenseRow(expense: HangoutExpenseDto, onClick: () -> Unit) {
     val settled = expense.status == "settled"
     val shape = RoundedCornerShape(12.dp)
     Row(
@@ -420,6 +433,7 @@ private fun LinkedExpenseRow(expense: HangoutExpenseDto) {
             .alpha(if (settled) 0.55f else 1f)
             .border(2.dp, Ink, shape)
             .background(Color.White, shape)
+            .clickableNoRipple(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

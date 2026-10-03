@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,8 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -58,7 +61,12 @@ import com.pingucodu.us.ui.theme.NeoConfirmDialog
 import com.pingucodu.us.ui.theme.SkeletonExpenseCard
 import com.pingucodu.us.ui.theme.Teal
 import com.pingucodu.us.ui.theme.YellowSoft
+import com.pingucodu.us.ui.theme.FLASH_DURATION_MS
+import com.pingucodu.us.ui.theme.flashPop
 import com.pingucodu.us.ui.theme.hardShadow
+import com.pingucodu.us.ui.theme.rememberFlash
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import com.pingucodu.us.ui.util.LocalNameMask
 import com.pingucodu.us.ui.util.NameMask
 import java.time.LocalDate
@@ -71,13 +79,16 @@ enum class MoneySection(val label: String) { EXPENSES("expenses"), GOALS("goals"
 
 /**
  * [initialSection] lets Home's goals teaser and a "goals" push jump straight to the goals section;
- * it's applied once, then [onInitialSectionConsumed] clears it.
+ * it's applied once, then [onInitialSectionConsumed] clears it. [focusExpense] likewise opens the
+ * expenses section scrolled to one expense, flashing it - from tapping it on a hangout card.
  */
 @Composable
 fun MoneyScreen(
     modifier: Modifier = Modifier,
     initialSection: MoneySection? = null,
     onInitialSectionConsumed: () -> Unit = {},
+    focusExpense: ExpenseFocus? = null,
+    onFocusExpenseConsumed: () -> Unit = {},
 ) {
     var section by rememberSaveable { mutableStateOf(MoneySection.EXPENSES) }
     LaunchedEffect(initialSection) {
@@ -85,6 +96,9 @@ fun MoneyScreen(
             section = initialSection
             onInitialSectionConsumed()
         }
+    }
+    LaunchedEffect(focusExpense) {
+        if (focusExpense != null) section = MoneySection.EXPENSES
     }
 
     Column(modifier = modifier.fillMaxSize().background(PinkTint)) {
@@ -97,21 +111,43 @@ fun MoneyScreen(
             }
         }
         when (section) {
-            MoneySection.EXPENSES -> ExpensesContent(modifier = Modifier.weight(1f))
+            MoneySection.EXPENSES -> ExpensesContent(
+                focusExpense = focusExpense,
+                onFocusExpenseConsumed = onFocusExpenseConsumed,
+                modifier = Modifier.weight(1f),
+            )
             MoneySection.GOALS -> GoalsContent(modifier = Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun ExpensesContent(modifier: Modifier = Modifier, viewModel: MoneyViewModel = hiltViewModel()) {
+private fun ExpensesContent(
+    focusExpense: ExpenseFocus?,
+    onFocusExpenseConsumed: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: MoneyViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.uiState.collectAsState()
     var expenseToDelete by remember { mutableStateOf<ExpenseDto?>(null) }
     var expenseToTogglePaid by remember { mutableStateOf<ExpenseDto?>(null) }
     var confirmSettleAll by remember { mutableStateOf(false) }
+    // A fresh scroll position per filter, as when the list was rebuilt on each switch.
+    val listState = key(uiState.statusFilter, uiState.hangoutFilter, uiState.showNoHangoutOnly) {
+        rememberLazyListState()
+    }
+    // The expense being scrolled to and flashed, once it's in the loaded list.
+    var flashExpenseId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.refreshOnEntry()
+    }
+    // After the entry refresh above, so the focused load (with its own filters) is the one that wins.
+    LaunchedEffect(focusExpense) {
+        if (focusExpense != null) {
+            viewModel.focusExpense(focusExpense)
+            onFocusExpenseConsumed()
+        }
     }
 
     // No background here - the parent Column already paints PinkTint, and painting it again would
@@ -157,6 +193,26 @@ private fun ExpensesContent(modifier: Modifier = Modifier, viewModel: MoneyViewM
                 uiState.expenses
             }
 
+            LaunchedEffect(uiState.focusExpenseId, uiState.isLoading) {
+                val id = uiState.focusExpenseId
+                if (id != null && !uiState.isLoading) {
+                    viewModel.consumeFocus()
+                    if (displayedExpenses.any { it.id == id }) flashExpenseId = id
+                }
+            }
+            // Its own effect, keyed on the target alone - consumeFocus() above would otherwise
+            // cancel the scroll halfway through.
+            LaunchedEffect(flashExpenseId) {
+                val id = flashExpenseId ?: return@LaunchedEffect
+                val index = displayedExpenses.indexOfFirst { it.id == id }
+                if (index >= 0) {
+                    snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
+                    listState.animateScrollToItem(index)
+                }
+                delay(FLASH_DURATION_MS)
+                flashExpenseId = null
+            }
+
             when {
                 uiState.isLoading && uiState.expenses.isEmpty() -> {
                     Column(
@@ -175,12 +231,14 @@ private fun ExpensesContent(modifier: Modifier = Modifier, viewModel: MoneyViewM
                 }
                 else -> {
                     LazyColumn(
+                        state = listState,
                         contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 210.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         items(displayedExpenses, key = { it.id }) { expense ->
                             ExpenseCard(
                                 expense = expense,
+                                highlighted = expense.id == flashExpenseId,
                                 hangouts = uiState.hangouts,
                                 currentUsername = uiState.currentUsername,
                                 onMarkPaid = { expenseToTogglePaid = expense },
@@ -414,6 +472,7 @@ private fun Pill(
 @Composable
 private fun ExpenseCard(
     expense: ExpenseDto,
+    highlighted: Boolean,
     hangouts: List<HangoutDto>,
     currentUsername: String?,
     onMarkPaid: () -> Unit,
@@ -426,9 +485,11 @@ private fun ExpenseCard(
     val stripeColor = if (isPaid) Teal else Pink
     val shape = RoundedCornerShape(18.dp)
     val nameMask = LocalNameMask.current
+    val flash = rememberFlash(highlighted)
 
     Column(
         modifier = Modifier
+            .flashPop(flash)
             .fillMaxWidth()
             .hardShadow(shape)
             .border(BorderWidth, Ink, shape)
