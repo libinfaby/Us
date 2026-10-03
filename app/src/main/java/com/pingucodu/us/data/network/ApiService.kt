@@ -146,6 +146,7 @@ interface ApiService {
         @Query("tag") tag: String? = null,
         @Query("limit") limit: Int? = null,
         @Query("offset") offset: Int? = null,
+        @Query("placeId") placeId: String? = null,
     ): Response<List<StashItemDto>>
 
     @GET("stash/tags")

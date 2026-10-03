@@ -80,10 +80,11 @@ class StashRepository @Inject constructor(
         tag: String? = null,
         limit: Int? = null,
         offset: Int? = null,
+        placeId: String? = null,
     ): StashItemsResult {
         val token = bearerToken() ?: return StashItemsResult.NetworkError("not logged in")
         val response = try {
-            api.getStash(token, status, type, tag, limit, offset)
+            api.getStash(token, status, type, tag, limit, offset, placeId)
         } catch (e: IOException) {
             return StashItemsResult.NetworkError(e.toUserMessage())
         }

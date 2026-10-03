@@ -198,6 +198,13 @@ fun StashScreen(
             Spacer(Modifier.height(4.dp))
             CategoryRow(selected = uiState.category, onSelect = viewModel::setCategory)
             Spacer(Modifier.height(12.dp))
+            uiState.placeFilter?.let { place ->
+                PlaceFilterChip(
+                    placeTitle = place.title,
+                    onClear = viewModel::clearPlaceFilter,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp),
+                )
+            }
             if (uiState.filterTags.isNotEmpty() || uiState.tag != null) {
                 TagFilterRow(tags = uiState.filterTags, selected = uiState.tag, onSelect = viewModel::setTag)
                 Spacer(Modifier.height(8.dp))
@@ -223,6 +230,7 @@ fun StashScreen(
                 onToggle = viewModel::toggleItem,
                 onEdit = viewModel::openEditDialog,
                 onDelete = { itemToDelete = it },
+                onShowActivities = viewModel::showActivitiesAt,
             )
         }
         }
@@ -266,6 +274,7 @@ fun StashScreen(
             onClearSearchResults = viewModel::clearSearchResults,
             hangouts = uiState.hangouts,
             onCreateHangout = viewModel::createHangoutAndReturn,
+            places = uiState.places,
             onDismiss = viewModel::dismissDialog,
             onSubmit = viewModel::submitItem,
             onRenameTag = viewModel::renameTag,
@@ -354,10 +363,26 @@ private fun TagFilterChip(tag: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+/** Shown while the activity list is narrowed to one place; tapping it goes back to every activity. */
+@Composable
+private fun PlaceFilterChip(placeTitle: String, onClear: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(50)
+    Box(
+        modifier = modifier
+            .hardShadow(shape, offsetX = 2.dp, offsetY = 2.dp)
+            .border(2.dp, Ink, shape)
+            .background(YellowSoft, shape)
+            .clickableNoRipple(onClick = onClear)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        Text("at $placeTitle  ×", style = PinguCoduType.monoLabel, color = Ink)
+    }
+}
+
 internal fun typeBadgeColor(type: String): Color = when (type) {
     "movie", "todo" -> Pink
     "place", "book" -> Teal
-    "link" -> YellowSoft
+    "link", "activity" -> YellowSoft
     else -> Color.White
 }
 
@@ -367,6 +392,7 @@ internal fun typeLabel(type: String): String =
 private fun titlePlaceholder(type: String): String = when (type) {
     "movie" -> "movie or show name"
     "book" -> "book title"
+    "activity" -> "something to do together"
     "link" -> "what's the link about?"
     "place" -> "place to visit"
     "note" -> "note title"
@@ -380,12 +406,14 @@ internal fun toggleLabel(type: String): Pair<String, String>? = when (type) {
     "place" -> "visited" to "mark visited"
     "movie" -> "watched" to "mark watched"
     "book" -> "read" to "mark read"
+    "activity" -> "did it" to "mark done"
     else -> null
 }
 
 private fun bodyPlaceholder(type: String): String = when (type) {
     "movie" -> "why watch it, or a note for later"
     "book" -> "why read it, or who suggested it"
+    "activity" -> "where, when, or why it'd be fun"
     "link" -> "paste the link"
     "place" -> "where is it, or why go?"
     "note" -> "what's on your mind?"
@@ -462,6 +490,7 @@ private fun StashItemsSection(
     onToggle: (String) -> Unit,
     onEdit: (StashItemDto) -> Unit,
     onDelete: (StashItemDto) -> Unit,
+    onShowActivities: (StashItemDto) -> Unit,
 ) {
     when {
         isLoading && items.isEmpty() -> {
@@ -508,6 +537,7 @@ private fun StashItemsSection(
                         onToggle = { onToggle(item.id) },
                         onEdit = { onEdit(item) },
                         onDelete = { onDelete(item) },
+                        onShowActivities = { onShowActivities(item) },
                     )
                 }
                 when {
@@ -531,6 +561,7 @@ private fun StashItemCard(
     onToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onShowActivities: () -> Unit,
 ) {
     val isMuted = toggleLabel(item.type) != null && item.status == "done"
     val flash = rememberFlash(highlighted)
@@ -561,6 +592,10 @@ private fun StashItemCard(
             Spacer(Modifier.height(4.dp))
             Text("hangout · $hangoutName", style = PinguCoduType.monoLabel, color = DescriptionGrey)
         }
+        if (item.placeTitle != null) {
+            Spacer(Modifier.height(4.dp))
+            Text("at · ${item.placeTitle}", style = PinguCoduType.monoLabel, color = DescriptionGrey)
+        }
         if (!item.body.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
             Text(bodyWithLinks(item.body), style = MaterialTheme.typography.bodySmall)
@@ -573,6 +608,15 @@ private fun StashItemCard(
             ) {
                 item.tags.forEach { tag -> TagChip(tag) }
             }
+        }
+        if (item.activityCount > 0) {
+            Spacer(Modifier.height(10.dp))
+            PillActionButton(
+                label = if (item.activityCount == 1) "1 activity here →" else "${item.activityCount} activities here →",
+                background = YellowSoft,
+                contentColor = Ink,
+                onClick = onShowActivities,
+            )
         }
         Spacer(Modifier.height(10.dp))
         DashedDivider()
@@ -685,6 +729,52 @@ private fun SuggestedTagChip(tag: String, selected: Boolean, onClick: () -> Unit
 
 // ---------- add/edit stash item ----------
 
+/** A white field showing [selectedLabel] (or [placeholder]) that drops down [options] as
+ * (id, label) pairs - the hangout and place pickers. */
+@Composable
+private fun NeoDropdownField(
+    selectedLabel: String?,
+    placeholder: String,
+    options: List<Pair<String, String>>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        val shape = RoundedCornerShape(14.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .hardShadow(shape, offsetX = 3.dp, offsetY = 3.dp)
+                .border(3.dp, Ink, shape)
+                .background(Color.White, shape)
+                .clickableNoRipple { menuExpanded = true }
+                .padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                selectedLabel ?: placeholder,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = if (selectedLabel != null) Ink else PlaceholderGrey,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(10.dp))
+            ChevronArrow(pointingUp = menuExpanded)
+        }
+        DropdownMenu(expanded = menuExpanded && options.isNotEmpty(), onDismissRequest = { menuExpanded = false }) {
+            options.forEach { (id, label) ->
+                DropdownMenuItem(
+                    text = { Text(label, style = MaterialTheme.typography.titleMedium) },
+                    onClick = {
+                        onSelect(id)
+                        menuExpanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
 /** Which hangout a stash item belongs to: a dropdown of the existing ones, plus "+ new" to create
  * one on the spot - the stash-sheet take on the expense form's hangout picker. */
 @Composable
@@ -695,46 +785,19 @@ private fun HangoutPicker(
     onCreateHangout: suspend (String) -> HangoutDto?,
 ) {
     val scope = rememberCoroutineScope()
-    var menuExpanded by remember { mutableStateOf(false) }
     var showNewInput by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
     var isCreating by remember { mutableStateOf(false) }
     val selectedName = hangouts.firstOrNull { it.id == selectedId }?.name
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(modifier = Modifier.weight(1f)) {
-            val shape = RoundedCornerShape(14.dp)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .hardShadow(shape, offsetX = 3.dp, offsetY = 3.dp)
-                    .border(3.dp, Ink, shape)
-                    .background(Color.White, shape)
-                    .clickableNoRipple { menuExpanded = true }
-                    .padding(horizontal = 14.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    selectedName ?: if (hangouts.isEmpty()) "no hangouts yet - add one" else "pick a hangout",
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                    color = if (selectedName != null) Ink else PlaceholderGrey,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(10.dp))
-                ChevronArrow(pointingUp = menuExpanded)
-            }
-            DropdownMenu(expanded = menuExpanded && hangouts.isNotEmpty(), onDismissRequest = { menuExpanded = false }) {
-                hangouts.forEach { h ->
-                    DropdownMenuItem(
-                        text = { Text(h.name, style = MaterialTheme.typography.titleMedium) },
-                        onClick = {
-                            onSelect(h.id)
-                            menuExpanded = false
-                        },
-                    )
-                }
-            }
-        }
+        NeoDropdownField(
+            selectedLabel = selectedName,
+            placeholder = if (hangouts.isEmpty()) "no hangouts yet - add one" else "pick a hangout",
+            options = hangouts.map { it.id to it.name },
+            onSelect = onSelect,
+            modifier = Modifier.weight(1f),
+        )
         NeoChoiceChip(
             label = if (showNewInput) "close" else "+ new",
             selected = showNewInput,
@@ -798,6 +861,7 @@ private fun StashItemFormDialog(
     onClearSearchResults: () -> Unit,
     hangouts: List<HangoutDto>,
     onCreateHangout: suspend (String) -> HangoutDto?,
+    places: List<StashItemDto>,
     onDismiss: () -> Unit,
     onSubmit: (StashItemRequest) -> Unit,
     onRenameTag: (type: String, oldTag: String, newTag: String) -> Unit,
@@ -816,6 +880,8 @@ private fun StashItemFormDialog(
     var tagToConfirmDelete by remember { mutableStateOf<String?>(null) }
     var inHangout by remember { mutableStateOf(item?.hangoutId != null) }
     var hangoutId by remember { mutableStateOf(item?.hangoutId) }
+    var atPlace by remember { mutableStateOf(item?.placeId != null) }
+    var placeId by remember { mutableStateOf(item?.placeId) }
 
     val isValid = title.isNotBlank()
 
@@ -1000,6 +1066,28 @@ private fun StashItemFormDialog(
         )
         Spacer(Modifier.height(18.dp))
 
+        if (type == ACTIVITY_TYPE) {
+            SectionLabel("at a place?")
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NeoChoiceChip(label = "no", selected = !atPlace, onClick = { atPlace = false })
+                NeoChoiceChip(label = "yes", selected = atPlace, onClick = { atPlace = true })
+            }
+            if (atPlace) {
+                Spacer(Modifier.height(10.dp))
+                // The places list is fetched as the sheet opens - until it's in, an edited
+                // activity shows its own copy of its place's title.
+                val selectedTitle = places.firstOrNull { it.id == placeId }?.title ?: item?.placeTitle?.takeIf { placeId == item.placeId }
+                NeoDropdownField(
+                    selectedLabel = selectedTitle,
+                    placeholder = if (places.isEmpty()) "no places saved yet" else "pick a place",
+                    options = places.map { it.id to it.title },
+                    onSelect = { placeId = it },
+                )
+            }
+            Spacer(Modifier.height(18.dp))
+        }
+
         SectionLabel("part of a hangout?")
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1033,6 +1121,7 @@ private fun StashItemFormDialog(
                     tags = finalTags(),
                     // "" unlinks it on edit.
                     hangoutId = hangoutId?.takeIf { inHangout } ?: "",
+                    placeId = if (type == ACTIVITY_TYPE) placeId?.takeIf { atPlace } ?: "" else null,
                 ),
             )
         }

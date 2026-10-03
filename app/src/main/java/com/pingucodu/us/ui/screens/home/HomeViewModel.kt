@@ -247,6 +247,7 @@ class HomeViewModel @Inject constructor(
             val code = when (item.type) {
                 "movie" -> "mv"
                 "book" -> "bk"
+                "activity" -> "ac"
                 "link" -> "ln"
                 "place" -> "pl"
                 "note" -> "nt"

@@ -8,7 +8,7 @@ export const stashRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>
 
 stashRoutes.use('*', requireAuth);
 
-const TYPES = ['movie', 'book', 'link', 'place', 'note', 'todo'] as const;
+const TYPES = ['movie', 'book', 'activity', 'link', 'place', 'note', 'todo'] as const;
 type StashType = (typeof TYPES)[number];
 
 const STATUSES = ['saved', 'done'] as const;
@@ -36,13 +36,23 @@ type StashRow = {
   body: string | null;
   url: string | null;
   hangout_id: string | null;
+  place_id: string | null;
   tags_json: string;
   status: StashStatus;
   created_at: string;
   updated_at: string;
 };
 
-function toItemJson(row: StashRow) {
+/** A row from [ITEM_SELECT]: the item plus its place's title and, for a place, how many
+ * activities are tied to it. */
+type StashItemRow = StashRow & { place_title: string | null; activity_count: number };
+
+/** Selects items as `s`, joined with what toItemJson needs from their linked place. */
+const ITEM_SELECT = `SELECT s.*, p.title AS place_title,
+    (SELECT COUNT(*) FROM stash_items a WHERE a.place_id = s.id AND a.type = 'activity') AS activity_count
+  FROM stash_items s LEFT JOIN stash_items p ON p.id = s.place_id`;
+
+function toItemJson(row: StashItemRow) {
   return {
     id: row.id,
     type: row.type,
@@ -51,6 +61,9 @@ function toItemJson(row: StashRow) {
     body: row.body,
     url: row.url,
     hangoutId: row.hangout_id,
+    placeId: row.place_id,
+    placeTitle: row.place_title,
+    activityCount: row.activity_count,
     tags: JSON.parse(row.tags_json) as string[],
     status: row.status,
     createdAt: row.created_at,
@@ -75,6 +88,18 @@ async function resolveHangoutId(env: Env, value: unknown): Promise<string | null
   return row ? value : undefined;
 }
 
+/** A place id for an activity: null for none, undefined for an id that isn't a saved place. */
+async function resolvePlaceId(env: Env, value: unknown): Promise<string | null | undefined> {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') return undefined;
+  const row = await env.DB.prepare("SELECT id FROM stash_items WHERE id = ? AND type = 'place'").bind(value).first();
+  return row ? value : undefined;
+}
+
+async function fetchItem(env: Env, id: string): Promise<StashItemRow | null> {
+  return env.DB.prepare(`${ITEM_SELECT} WHERE s.id = ?`).bind(id).first<StashItemRow>();
+}
+
 function parseNonNegativeInt(value: string | undefined): number | null | undefined {
   if (value === undefined) return undefined;
   return /^\d+$/.test(value) ? Number(value) : null;
@@ -90,6 +115,7 @@ stashRoutes.get('/', async (c) => {
     return c.json({ error: 'invalid type' }, 400);
   }
   const tagParam = c.req.query('tag');
+  const placeParam = c.req.query('placeId');
   const limit = parseNonNegativeInt(c.req.query('limit'));
   const offset = parseNonNegativeInt(c.req.query('offset'));
   if (limit === null || limit === 0 || offset === null) {
@@ -99,22 +125,26 @@ stashRoutes.get('/', async (c) => {
   const conditions: string[] = [];
   const bindings: (string | number)[] = [];
   if (statusParam !== 'everything') {
-    conditions.push('status = ?');
+    conditions.push('s.status = ?');
     bindings.push(statusParam);
   }
   if (typeParam) {
-    conditions.push('type = ?');
+    conditions.push('s.type = ?');
     bindings.push(typeParam);
   }
   if (tagParam) {
-    conditions.push('EXISTS (SELECT 1 FROM json_each(stash_items.tags_json) WHERE value = ?)');
+    conditions.push('EXISTS (SELECT 1 FROM json_each(s.tags_json) WHERE value = ?)');
     bindings.push(tagParam);
+  }
+  if (placeParam) {
+    conditions.push('s.place_id = ?');
+    bindings.push(placeParam);
   }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   // Done items sink below pending ones server-side so paging stays consistent with what the
   // app shows; id breaks created_at ties (second resolution) so pages never overlap or skip.
-  let sql = `SELECT * FROM stash_items ${where} ORDER BY status = 'done', created_at DESC, id`;
+  let sql = `${ITEM_SELECT} ${where} ORDER BY s.status = 'done', s.created_at DESC, s.id`;
   if (limit !== undefined) {
     sql += ' LIMIT ? OFFSET ?';
     bindings.push(limit, offset ?? 0);
@@ -122,7 +152,7 @@ stashRoutes.get('/', async (c) => {
 
   const { results } = await c.env.DB.prepare(sql)
     .bind(...bindings)
-    .all<StashRow>();
+    .all<StashItemRow>();
   return c.json(results.map(toItemJson));
 });
 
@@ -182,10 +212,10 @@ stashRoutes.get('/book-preview', async (c) => {
 
 stashRoutes.post('/', async (c) => {
   const body = await c.req.json().catch(() => null);
-  const { type, title, body: itemBody, tags, url: rawUrl, hangoutId: rawHangoutId } = body ?? {};
+  const { type, title, body: itemBody, tags, url: rawUrl, hangoutId: rawHangoutId, placeId: rawPlaceId } = body ?? {};
 
   if (!isType(type) || typeof title !== 'string' || title.trim().length === 0) {
-    return c.json({ error: 'type (movie/book/link/place/note/todo) and title are required' }, 400);
+    return c.json({ error: 'type (movie/book/activity/link/place/note/todo) and title are required' }, 400);
   }
   if (tags !== undefined && (!Array.isArray(tags) || !tags.every((t) => typeof t === 'string'))) {
     return c.json({ error: 'tags must be an array of strings' }, 400);
@@ -195,10 +225,12 @@ stashRoutes.post('/', async (c) => {
   if (url === undefined) return c.json({ error: 'url must be an http(s) link' }, 400);
   const hangoutId = await resolveHangoutId(c.env, rawHangoutId);
   if (hangoutId === undefined) return c.json({ error: 'unknown hangoutId' }, 400);
+  const placeId = await resolvePlaceId(c.env, rawPlaceId);
+  if (placeId === undefined) return c.json({ error: 'placeId must be a saved place' }, 400);
 
   const id = crypto.randomUUID();
   await c.env.DB.prepare(
-    `INSERT INTO stash_items (id, type, author, title, body, url, hangout_id, tags_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO stash_items (id, type, author, title, body, url, hangout_id, place_id, tags_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -208,11 +240,12 @@ stashRoutes.post('/', async (c) => {
       typeof itemBody === 'string' ? itemBody : null,
       URL_TYPES.includes(type) ? url : null,
       hangoutId,
+      type === 'activity' ? placeId : null,
       JSON.stringify(tags ?? []),
     )
     .run();
 
-  const row = await c.env.DB.prepare('SELECT * FROM stash_items WHERE id = ?').bind(id).first<StashRow>();
+  const row = await fetchItem(c.env, id);
 
   c.executionCtx.waitUntil(
     notifyPartner(c.env, c.var.username, 'New in Stash', `${c.var.username} added '${title.trim()}' to Stash`, {
@@ -245,6 +278,8 @@ stashRoutes.patch('/:id', async (c) => {
   if (url === undefined) return c.json({ error: 'url must be an http(s) link' }, 400);
   const hangoutId = body.hangoutId !== undefined ? await resolveHangoutId(c.env, body.hangoutId) : existing.hangout_id;
   if (hangoutId === undefined) return c.json({ error: 'unknown hangoutId' }, 400);
+  const placeId = body.placeId !== undefined ? await resolvePlaceId(c.env, body.placeId) : existing.place_id;
+  if (placeId === undefined) return c.json({ error: 'placeId must be a saved place' }, 400);
   let tagsJson = existing.tags_json;
   if (body.tags !== undefined) {
     if (!Array.isArray(body.tags) || !body.tags.every((t: unknown) => typeof t === 'string')) {
@@ -254,13 +289,27 @@ stashRoutes.patch('/:id', async (c) => {
   }
 
   await c.env.DB.prepare(
-    `UPDATE stash_items SET type = ?, title = ?, body = ?, url = ?, hangout_id = ?, tags_json = ?, status = ?, updated_at = datetime('now')
+    `UPDATE stash_items SET type = ?, title = ?, body = ?, url = ?, hangout_id = ?, place_id = ?, tags_json = ?, status = ?, updated_at = datetime('now')
      WHERE id = ?`,
   )
-    .bind(type, title, typeof itemBody === 'string' ? itemBody : null, URL_TYPES.includes(type) ? url : null, hangoutId, tagsJson, status, id)
+    .bind(
+      type,
+      title,
+      typeof itemBody === 'string' ? itemBody : null,
+      URL_TYPES.includes(type) ? url : null,
+      hangoutId,
+      type === 'activity' ? placeId : null,
+      tagsJson,
+      status,
+      id,
+    )
     .run();
+  // A place turned into something else no longer anchors activities.
+  if (existing.type === 'place' && type !== 'place') {
+    await c.env.DB.prepare('UPDATE stash_items SET place_id = NULL WHERE place_id = ?').bind(id).run();
+  }
 
-  const row = await c.env.DB.prepare('SELECT * FROM stash_items WHERE id = ?').bind(id).first<StashRow>();
+  const row = await fetchItem(c.env, id);
   return c.json(toItemJson(row!));
 });
 
@@ -274,13 +323,17 @@ stashRoutes.post('/:id/toggle', async (c) => {
     .bind(newStatus, id)
     .run();
 
-  const row = await c.env.DB.prepare('SELECT * FROM stash_items WHERE id = ?').bind(id).first<StashRow>();
+  const row = await fetchItem(c.env, id);
   return c.json(toItemJson(row!));
 });
 
 stashRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id');
-  const result = await c.env.DB.prepare('DELETE FROM stash_items WHERE id = ?').bind(id).run();
+  // Deleting a place unlinks its activities rather than deleting them.
+  const [, result] = await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE stash_items SET place_id = NULL WHERE place_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM stash_items WHERE id = ?').bind(id),
+  ]);
   if (result.meta.changes === 0) return c.json({ error: 'item not found' }, 404);
   return c.json({ ok: true });
 });

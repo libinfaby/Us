@@ -34,6 +34,7 @@ val STASH_TYPES = listOf(
     StashTypeSpec("place", "place"),
     StashTypeSpec("movie", "movie"),
     StashTypeSpec("book", "book"),
+    StashTypeSpec("activity", "activity"),
     StashTypeSpec("link", "link"),
     StashTypeSpec("note", "note"),
     StashTypeSpec("todo", "to-do"),
@@ -46,6 +47,10 @@ val LINK_PREVIEW_TYPES = setOf("movie", "book", "place")
 val SEARCHABLE_TYPES = setOf("movie", "book")
 
 const val ALL_CATEGORY = "all"
+const val PLACE_TYPE = "place"
+const val ACTIVITY_TYPE = "activity"
+/** Enough for every place we'd realistically save; the picker isn't paged. */
+private const val PLACES_LIMIT = 200
 private const val PAGE_SIZE = 10
 /** How far [StashViewModel.focusItem] pages through looking for an item before giving up. */
 private const val FOCUS_MAX_PAGES = 30
@@ -84,6 +89,10 @@ data class StashUiState(
     val hangouts: List<HangoutDto> = emptyList(),
     /** Set until the screen has scrolled to it (see [StashViewModel.focusItem]). */
     val focusItemId: String? = null,
+    /** Saved places, for the add sheet's "at a place?" picker on activities. */
+    val places: List<StashItemDto> = emptyList(),
+    /** Narrows the activity list to the ones tied to this place (see [StashViewModel.showActivitiesAt]). */
+    val placeFilter: StashItemDto? = null,
 ) {
     val typeFilter: String? get() = if (category == ALL_CATEGORY) null else category
 
@@ -115,9 +124,20 @@ class StashViewModel @Inject constructor(
         // briefly showing the previous category's items under a spurious pull-to-refresh spinner.
         // A tag filter carries over only if the new category actually has that tag.
         _uiState.update {
-            val next = it.copy(category = category, items = emptyList())
+            val next = it.copy(category = category, items = emptyList(), placeFilter = null)
             next.copy(tag = it.tag?.takeIf { tag -> tag in next.filterTags })
         }
+        refresh()
+    }
+
+    /** A place card's "N activities" button: the activity list, narrowed to that place. */
+    fun showActivitiesAt(place: StashItemDto) {
+        _uiState.update { it.copy(category = ACTIVITY_TYPE, tag = null, placeFilter = place, items = emptyList()) }
+        refresh()
+    }
+
+    fun clearPlaceFilter() {
+        _uiState.update { it.copy(placeFilter = null, items = emptyList()) }
         refresh()
     }
 
@@ -150,6 +170,7 @@ class StashViewModel @Inject constructor(
                 tag = state.tag,
                 limit = limit,
                 offset = 0,
+                placeId = state.placeFilter?.id,
             )
             when (result) {
                 is StashItemsResult.Success ->
@@ -168,7 +189,14 @@ class StashViewModel @Inject constructor(
         itemsJob?.cancel()
         // Loading is set right away so the screen doesn't look for the item in the emptied list.
         _uiState.update {
-            it.copy(category = focus.type, tag = null, items = emptyList(), isLoading = true, focusItemId = focus.itemId)
+            it.copy(
+                category = focus.type,
+                tag = null,
+                placeFilter = null,
+                items = emptyList(),
+                isLoading = true,
+                focusItemId = focus.itemId,
+            )
         }
         itemsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingMore = false, loadMoreFailed = false, errorMessage = null) }
@@ -208,6 +236,7 @@ class StashViewModel @Inject constructor(
                 tag = state.tag,
                 limit = PAGE_SIZE,
                 offset = state.items.size,
+                placeId = state.placeFilter?.id,
             )
             when (result) {
                 is StashItemsResult.Success ->
@@ -257,10 +286,23 @@ class StashViewModel @Inject constructor(
 
     fun openAddDialog() {
         _uiState.update { it.withFreshDialog().copy(showAddDialog = true) }
+        refreshPlaces()
     }
 
     fun openEditDialog(item: StashItemDto) {
         _uiState.update { it.withFreshDialog().copy(showAddDialog = true, editingItem = item) }
+        refreshPlaces()
+    }
+
+    /** Every saved place, for tying an activity to one. Quiet on failure - the picker just
+     * keeps what it had. */
+    private fun refreshPlaces() {
+        viewModelScope.launch {
+            when (val result = stashRepository.getItems(status = "everything", type = PLACE_TYPE, limit = PLACES_LIMIT)) {
+                is StashItemsResult.Success -> _uiState.update { it.copy(places = result.items) }
+                is StashItemsResult.NetworkError -> Unit
+            }
+        }
     }
 
     /** A link shared from another app: guess movie, book or place from the host, open the add sheet
@@ -273,6 +315,7 @@ class StashViewModel @Inject constructor(
         }
         _uiState.update { it.withFreshDialog().copy(showAddDialog = true, prefillUrl = url, prefillType = type) }
         fetchPreview(url)
+        refreshPlaces()
     }
 
     fun dismissDialog() {

@@ -12,6 +12,11 @@ data class StashItemDto(
     val url: String? = null,
     /** The hangout this item belongs to, if any. */
     val hangoutId: String? = null,
+    /** For an activity: the saved place it's tied to, if any, and that place's title. */
+    val placeId: String? = null,
+    val placeTitle: String? = null,
+    /** For a place: how many activities are tied to it. */
+    val activityCount: Int = 0,
     val tags: List<String>,
     val status: String,
     val createdAt: String,
@@ -32,6 +37,8 @@ data class StashItemRequest(
     val url: String? = null,
     /** "" unlinks it from its hangout on PATCH, like [url]. */
     val hangoutId: String? = null,
+    /** Activities only; "" unlinks it from its place on PATCH, like [url]. */
+    val placeId: String? = null,
     val tags: List<String>? = null,
     val status: String? = null,
 )
