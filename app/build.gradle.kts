@@ -47,8 +47,10 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
+            // R8 shrinks and optimizes the app and its Compose libraries - without it Compose
+            // scrolling and animations run noticeably janky on device.
             optimization {
-                enable = false
+                enable = true
             }
         }
     }

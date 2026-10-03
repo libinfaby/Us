@@ -1,5 +1,14 @@
 package com.pingucodu.us.ui.nav
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -41,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -108,10 +117,6 @@ private fun MainScreen(
     // One-shot hand-offs into a tab: consumed by the destination screen once it has acted on them.
     var moneySection by remember { mutableStateOf<MoneySection?>(null) }
     var stashSharedUrl by remember { mutableStateOf<String?>(null) }
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = backStackEntry?.destination?.route
-    val isTabRoute = Tab.entries.any { it.route == currentRoute }
-
     fun navigateToTab(tab: Tab) {
         navController.navigate(tab.route) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -145,28 +150,38 @@ private fun MainScreen(
         }
     }
 
-    Scaffold(
-        containerColor = PinkTint,
-        topBar = {
-            if (isTabRoute) {
-                AppHeader(
-                    username = username,
-                    onSettings = { navController.navigate(SETTINGS_ROUTE) },
-                    onLogout = onLogout,
-                )
-            }
-        },
-        // No bottomBar slot: PillNavBar is layered on top of the content below instead, as a
-        // true floating overlay the content can scroll behind - a Scaffold bottomBar would
-        // reserve its own opaque strip and dock the content above it instead.
-    ) { innerPadding ->
+    // The header and nav bar live inside each tab's destination (see TabChrome) rather than in
+    // Scaffold slots, so they slide along with the tab during a back gesture from Settings/Dates
+    // instead of popping in only once the gesture completes.
+    @Composable
+    fun TabFrame(tab: Tab, content: @Composable () -> Unit) {
+        TabChrome(
+            tab = tab,
+            username = username,
+            onSettings = { navController.navigate(SETTINGS_ROUTE) },
+            onLogout = onLogout,
+            onSelectTab = ::navigateToTab,
+            content = content,
+        )
+    }
+
+    Scaffold(containerColor = PinkTint) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
             NavHost(
                 navController = navController,
                 startDestination = Tab.Home.route,
                 modifier = Modifier.fillMaxSize(),
+                enterTransition = { navEnter() },
+                exitTransition = { navExit() },
+                popEnterTransition = { navPopEnter() },
+                popExitTransition = { navPopExit() },
+                // The back gesture scrubs the same animation as a tapped back button, instead of
+                // Navigation's default shrink-to-70% predictive-back effect.
+                predictivePopEnterTransition = { navPopEnter() },
+                predictivePopExitTransition = { navPopExit() },
             ) {
                 composable(Tab.Home.route) {
+                    TabFrame(Tab.Home) {
                     HomeScreen(
                         onNavigateToMoney = { navigateToTab(Tab.Money) },
                         onNavigateToCycle = { navigateToTab(Tab.Cycle) },
@@ -177,29 +192,93 @@ private fun MainScreen(
                             navigateToTab(Tab.Money)
                         },
                     )
+                    }
                 }
                 composable(Tab.Money.route) {
-                    MoneyScreen(initialSection = moneySection, onInitialSectionConsumed = { moneySection = null })
+                    TabFrame(Tab.Money) {
+                        MoneyScreen(initialSection = moneySection, onInitialSectionConsumed = { moneySection = null })
+                    }
                 }
-                composable(Tab.Cycle.route) { CycleScreen() }
+                composable(Tab.Cycle.route) { TabFrame(Tab.Cycle) { CycleScreen() } }
                 composable(Tab.Stash.route) {
-                    StashScreen(sharedUrl = stashSharedUrl, onSharedUrlConsumed = { stashSharedUrl = null })
+                    TabFrame(Tab.Stash) {
+                        StashScreen(sharedUrl = stashSharedUrl, onSharedUrlConsumed = { stashSharedUrl = null })
+                    }
                 }
+                // Pushed screens paint their own background so the tab underneath doesn't show
+                // through while they slide.
                 composable(SETTINGS_ROUTE) {
-                    SettingsScreen(onBack = { navController.popBackStack() })
+                    SettingsScreen(onBack = { navController.popBackStack() }, modifier = Modifier.background(PinkTint))
                 }
                 composable(DATES_ROUTE) {
-                    DatesScreen(onBack = { navController.popBackStack() })
+                    DatesScreen(onBack = { navController.popBackStack() }, modifier = Modifier.background(PinkTint))
                 }
             }
-            if (isTabRoute) {
-                PillNavBar(
-                    currentRoute = currentRoute,
-                    onSelect = ::navigateToTab,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
-            }
         }
+    }
+}
+
+// Settings and Dates are pushed on top of a tab, so they slide in from the right and back out the
+// same way; switching between tabs is a quick crossfade. Kept short - every frame of a transition
+// draws both screens.
+private const val NAV_FADE_MS = 180
+private const val NAV_SLIDE_MS = 280
+
+private val PUSHED_ROUTES = setOf(SETTINGS_ROUTE, DATES_ROUTE)
+
+private val NavBackStackEntry.isPushed: Boolean get() = destination.route in PUSHED_ROUTES
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.navEnter(): EnterTransition =
+    if (targetState.isPushed) {
+        slideInHorizontally(tween(NAV_SLIDE_MS, easing = FastOutSlowInEasing)) { it }
+    } else {
+        fadeIn(tween(NAV_FADE_MS))
+    }
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.navExit(): ExitTransition =
+    if (targetState.isPushed) {
+        slideOutHorizontally(tween(NAV_SLIDE_MS, easing = FastOutSlowInEasing)) { -it / 4 }
+    } else {
+        fadeOut(tween(NAV_FADE_MS))
+    }
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopEnter(): EnterTransition =
+    if (initialState.isPushed) {
+        slideInHorizontally(tween(NAV_SLIDE_MS, easing = FastOutSlowInEasing)) { -it / 4 }
+    } else {
+        fadeIn(tween(NAV_FADE_MS))
+    }
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.navPopExit(): ExitTransition =
+    if (initialState.isPushed) {
+        slideOutHorizontally(tween(NAV_SLIDE_MS, easing = FastOutSlowInEasing)) { it }
+    } else {
+        fadeOut(tween(NAV_FADE_MS))
+    }
+
+/**
+ * A tab's chrome: the header above its content, and PillNavBar layered on top as a floating
+ * overlay the content can scroll behind (a docked bottom bar would reserve its own opaque strip).
+ */
+@Composable
+private fun TabChrome(
+    tab: Tab,
+    username: String,
+    onSettings: () -> Unit,
+    onLogout: () -> Unit,
+    onSelectTab: (Tab) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            AppHeader(username = username, onSettings = onSettings, onLogout = onLogout)
+            Box(Modifier.weight(1f)) { content() }
+        }
+        PillNavBar(
+            currentRoute = tab.route,
+            onSelect = onSelectTab,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
@@ -210,7 +289,6 @@ private fun AppHeader(username: String, onSettings: () -> Unit, onLogout: () -> 
         modifier = Modifier
             .fillMaxWidth()
             .background(PinkTint)
-            .statusBarsPadding()
             .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

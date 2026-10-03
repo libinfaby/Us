@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -44,9 +44,9 @@ import androidx.compose.ui.unit.dp
 val SkeletonBarColor = Color(0xFFFFC9DF)
 
 @Composable
-private fun rememberShimmerTranslate(): Float {
+private fun rememberShimmerTranslate(): State<Float> {
     val transition = rememberInfiniteTransition(label = "shimmer")
-    val translate by transition.animateFloat(
+    return transition.animateFloat(
         initialValue = -400f,
         targetValue = 400f,
         animationSpec = infiniteRepeatable(
@@ -55,7 +55,6 @@ private fun rememberShimmerTranslate(): Float {
         ),
         label = "shimmerTranslate",
     )
-    return translate
 }
 
 /** A single shimmering line/chip - the building block for every skeleton card's content. */
@@ -68,12 +67,15 @@ fun SkeletonBar(
     Box(
         modifier = modifier.drawWithCache {
             val outline = shape.createOutline(size, layoutDirection, this)
-            val brush = Brush.linearGradient(
-                colors = listOf(SkeletonBarColor, Color.White.copy(alpha = 0.95f), SkeletonBarColor),
-                start = Offset(translate - size.width, 0f),
-                end = Offset(translate, size.height),
-            )
+            // The animated value is only read while drawing, so each shimmer frame is a redraw -
+            // no recomposition or re-layout of the skeleton.
             onDrawBehind {
+                val x = translate.value
+                val brush = Brush.linearGradient(
+                    colors = listOf(SkeletonBarColor, Color.White.copy(alpha = 0.95f), SkeletonBarColor),
+                    start = Offset(x - size.width, 0f),
+                    end = Offset(x, size.height),
+                )
                 drawOutline(outline, color = SkeletonBarColor)
                 drawOutline(outline, brush = brush)
             }
