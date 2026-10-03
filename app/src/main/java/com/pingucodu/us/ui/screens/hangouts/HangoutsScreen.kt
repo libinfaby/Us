@@ -57,9 +57,9 @@ import com.pingucodu.us.ui.screens.stash.relativeTime
 import com.pingucodu.us.ui.screens.stash.toggleLabel
 import com.pingucodu.us.ui.screens.stash.typeBadgeColor
 import com.pingucodu.us.ui.screens.stash.typeLabel
-import com.pingucodu.us.ui.theme.DashedDivider
 import com.pingucodu.us.ui.theme.DescriptionGrey
 import com.pingucodu.us.ui.theme.Ink
+import com.pingucodu.us.ui.theme.BorderWidth
 import com.pingucodu.us.ui.theme.NeoConfirmDialog
 import com.pingucodu.us.ui.theme.PinguCoduType
 import com.pingucodu.us.ui.theme.Pink
@@ -319,12 +319,20 @@ private fun HangoutCard(
             }
             AddMemoryButton(onClick = onAddMemory)
             if (hangout.stashItems.isNotEmpty()) {
-                LinkedSection(label = "stash", count = hangout.stashItems.size, key = "${hangout.id}-stash") {
+                LinkedSection(
+                    label = "stash",
+                    count = hangout.stashItems.size,
+                    key = "${hangout.id}-stash",
+                ) {
                     hangout.stashItems.forEach { LinkedStashRow(it) }
                 }
             }
             if (hangout.expenses.isNotEmpty()) {
-                LinkedSection(label = "expenses", count = hangout.expenses.size, key = "${hangout.id}-expenses") {
+                LinkedSection(
+                    label = "expenses",
+                    count = hangout.expenses.size,
+                    key = "${hangout.id}-expenses",
+                ) {
                     hangout.expenses.forEach { LinkedExpenseRow(it) }
                 }
             }
@@ -332,21 +340,43 @@ private fun HangoutCard(
     }
 }
 
-/** A collapsible list on a hangout card (its stash items, its expenses) - closed until tapped,
- * so a long trip's receipts don't bury the memories. */
+/** A collapsible card on a hangout card (its stash items, its expenses) - closed until its header
+ * is tapped, so a long trip's receipts don't bury the memories. Open, the items stack inside it
+ * as sub-cards. */
 @Composable
 private fun LinkedSection(label: String, count: Int, key: String, content: @Composable () -> Unit) {
     var expanded by rememberSaveable(key) { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        DashedDivider()
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .hardShadow(shape, offsetX = 3.dp, offsetY = 3.dp)
+            .border(BorderWidth, Ink, shape)
+            .background(Color.White, shape)
+            .clip(shape),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickableNoRipple { expanded = !expanded }.padding(vertical = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(PinkTint)
+                .clickableNoRipple { expanded = !expanded }
+                .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("$label · $count".uppercase(), style = PinguCoduType.monoLabel, color = Ink, modifier = Modifier.weight(1f))
+            Text(label, style = MaterialTheme.typography.titleMedium, color = Ink, modifier = Modifier.weight(1f))
+            Text(count.toString(), style = MaterialTheme.typography.titleMedium, color = Ink)
+            Spacer(Modifier.width(12.dp))
             ChevronArrow(pointingUp = expanded)
         }
-        if (expanded) content()
+        if (expanded) {
+            Box(Modifier.fillMaxWidth().height(BorderWidth).background(Ink))
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                content()
+            }
+        }
     }
 }
 
