@@ -1,31 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Status-bar small icon: must be a plain white silhouette on a transparent
-     background (Android ignores color/alpha gradients here and just masks by
-     alpha). Same glyph as ic_launcher_monochrome, re-centred (the logo's glyph
-     sits slightly left of centre) and scaled up to fill the 20dp live area,
-     with a slightly heavier stroke (~1.7dp) and a bigger dot nudged down a
-     touch so it doesn't merge into the top bar at 24dp. -->
+<!-- Status-bar small icon: must be a plain white silhouette on a transparent background
+     (Android masks by alpha only). Just the penguin's outline + eye from ic_launcher_foreground,
+     centred and scaled to fill the 20dp live area, with a heavier stroke (~1.8dp) and a bigger eye
+     nudged down a touch so it doesn't merge into the top bar at 24dp. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="300"
-    android:viewportHeight="300">
+    android:viewportWidth="600"
+    android:viewportHeight="600">
     <group
-        android:pivotX="142"
-        android:pivotY="150"
-        android:translateX="8"
-        android:scaleX="1.46"
-        android:scaleY="1.46">
+        android:translateX="-297.5"
+        android:translateY="-323.0">
         <path
             android:strokeColor="#FFFFFF"
-            android:strokeWidth="15"
-            android:pathData="M165.018,229L171.452,228.42C184.336,227.257 194.205,216.457 194.205,203.521V149.727M194.205,149.727V96C194.205,82.1929 205.398,71 219.205,71H221H188.658H154.013C143.406,71 133.954,77.6936 130.432,87.699L114.46,133.073C111.045,142.772 101.291,148.741 91.1007,147.367L194.205,149.727ZM154.725,171.877H119.773C109.247,171.877 99.8483,178.47 96.2655,188.368L87.5265,212.509C83.9437,222.407 74.5452,229 64.0192,229H63H151.143" />
+            android:strokeWidth="44"
+            android:strokeLineJoin="round"
+            android:pathData="M659,846H675C714,846 746,814 746,775V471C746,432 777,400 816,400H824M824,400H636C603,400 563,432 546,470L495,590C489,605 471,618 455,618" />
         <path
             android:strokeColor="#FFFFFF"
-            android:strokeWidth="15"
-            android:pathData="M164,229H200" />
+            android:strokeWidth="44"
+            android:strokeLineJoin="round"
+            android:pathData="M434,618H765" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="44"
+            android:strokeLineJoin="round"
+            android:pathData="M630,688H545C510,688 474,705 460,740L429,818C422,834 405,846 390,846" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="44"
+            android:strokeLineJoin="round"
+            android:pathData="M371,846H623" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="44"
+            android:strokeLineJoin="round"
+            android:pathData="M659,846H765" />
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M167,91a7,7 0,1 0,14 0a7,7 0,1 0,-14 0Z" />
+            android:pathData="M662,458a22,22 0,1 0,44,0a22,22 0,1 0,-44,0Z" />
     </group>
 </vector>

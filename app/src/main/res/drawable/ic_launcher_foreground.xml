@@ -1,27 +1,99 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Us glyph from UsAppLogo.svg: one pink stroke, the foot bar and the dot. Uses the source
-     artwork's 300 viewport, pivot-scaled by 72/108 so the logo's 300 circle lands exactly on the
-     72dp visible area of the adaptive icon, which keeps the glyph inside the 66dp safe zone. -->
+<!-- The Us penguin logo: the penguin with its yellow drop shadow, scaled up around its centre.
+     Drawn in the source artwork's 1254px space, which is centred on the 72dp visible area of
+     the 108dp adaptive canvas. At 1.45x the penguin and shadow reach ~31dp from the centre,
+     inside the 33dp safe zone every launcher mask keeps. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="300"
-    android:viewportHeight="300">
+    android:viewportWidth="1881"
+    android:viewportHeight="1881">
     <group
-        android:pivotX="150"
-        android:pivotY="150"
-        android:scaleX="0.6667"
-        android:scaleY="0.6667">
-        <path
-            android:strokeColor="#FF4FA3"
-            android:strokeWidth="13"
-            android:pathData="M165.018,229L171.452,228.42C184.336,227.257 194.205,216.457 194.205,203.521V149.727M194.205,149.727V96C194.205,82.1929 205.398,71 219.205,71H221H188.658H154.013C143.406,71 133.954,77.6936 130.432,87.699L114.46,133.073C111.045,142.772 101.291,148.741 91.1007,147.367L194.205,149.727ZM154.725,171.877H119.773C109.247,171.877 99.8483,178.47 96.2655,188.368L87.5265,212.509C83.9437,222.407 74.5452,229 64.0192,229H63H151.143" />
-        <path
-            android:strokeColor="#FF4FA3"
-            android:strokeWidth="13"
-            android:pathData="M164,229H200" />
-        <path
-            android:fillColor="#FF4FA3"
-            android:pathData="M168,88a6,6 0,1 0,12 0a6,6 0,1 0,-12 0Z" />
+        android:translateX="313.5"
+        android:translateY="313.5">
+        <!-- pivot = centre of the penguin + shadow; the translate re-centres it on the canvas -->
+        <group
+            android:pivotX="622"
+            android:pivotY="641"
+            android:scaleX="1.45"
+            android:scaleY="1.45"
+            android:translateX="5"
+            android:translateY="-14">
+            <!-- yellow drop shadow: the whole penguin silhouette, nudged down-right -->
+            <group
+                android:translateX="50"
+                android:translateY="36">
+                <path
+                    android:fillColor="#FFD166"
+                    android:pathData="M746,618V471C746,432 777,400 816,400H636C603,400 563,432 546,470L495,590C489,605 471,618 455,618Z" />
+                <path
+                    android:fillColor="#FFD166"
+                    android:pathData="M746,618V775C746,814 714,846 675,846H390C405,846 422,834 429,818L460,740C474,705 510,688 545,688H482V618Z" />
+                <path
+                    android:strokeColor="#FFD166"
+                    android:strokeWidth="38"
+                    android:strokeLineJoin="round"
+                    android:pathData="M659,846H675C714,846 746,814 746,775V471C746,432 777,400 816,400H824M824,400H636C603,400 563,432 546,470L495,590C489,605 471,618 455,618" />
+                <path
+                    android:strokeColor="#FFD166"
+                    android:strokeWidth="38"
+                    android:strokeLineJoin="round"
+                    android:pathData="M434,618H765" />
+                <path
+                    android:strokeColor="#FFD166"
+                    android:strokeWidth="38"
+                    android:strokeLineJoin="round"
+                    android:pathData="M630,688H545C510,688 474,705 460,740L429,818C422,834 405,846 390,846" />
+                <path
+                    android:strokeColor="#FFD166"
+                    android:strokeWidth="38"
+                    android:strokeLineJoin="round"
+                    android:pathData="M371,846H623" />
+                <path
+                    android:strokeColor="#FFD166"
+                    android:strokeWidth="38"
+                    android:strokeLineJoin="round"
+                    android:pathData="M659,846H765" />
+            </group>
+            <!-- pink head, teal flipper, pink belly split on the diagonal -->
+            <path
+                android:fillColor="#FF4FA3"
+                android:pathData="M746,618V471C746,432 777,400 816,400H636C603,400 563,432 546,470L495,590C489,605 471,618 455,618Z" />
+            <path
+                android:fillColor="#00CFC8"
+                android:pathData="M746,618V775C746,814 714,846 675,846H390C405,846 422,834 429,818L460,740C474,705 510,688 545,688H482V618Z" />
+            <path
+                android:fillColor="#FF4FA3"
+                android:pathData="M714,618H746V775C746,814 714,846 675,846H470Z" />
+            <!-- ink outline + eye -->
+            <path
+                android:strokeColor="#111111"
+                android:strokeWidth="38"
+                android:strokeLineJoin="round"
+                android:pathData="M659,846H675C714,846 746,814 746,775V471C746,432 777,400 816,400H824M824,400H636C603,400 563,432 546,470L495,590C489,605 471,618 455,618" />
+            <path
+                android:strokeColor="#111111"
+                android:strokeWidth="38"
+                android:strokeLineJoin="round"
+                android:pathData="M434,618H765" />
+            <path
+                android:strokeColor="#111111"
+                android:strokeWidth="38"
+                android:strokeLineJoin="round"
+                android:pathData="M630,688H545C510,688 474,705 460,740L429,818C422,834 405,846 390,846" />
+            <path
+                android:strokeColor="#111111"
+                android:strokeWidth="38"
+                android:strokeLineJoin="round"
+                android:pathData="M371,846H623" />
+            <path
+                android:strokeColor="#111111"
+                android:strokeWidth="38"
+                android:strokeLineJoin="round"
+                android:pathData="M659,846H765" />
+            <path
+                android:fillColor="#111111"
+                android:pathData="M665,452a19,19 0,1 0,38,0a19,19 0,1 0,-38,0Z" />
+        </group>
     </group>
 </vector>
