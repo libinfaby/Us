@@ -26,8 +26,8 @@ android {
         applicationId = "com.pingucodu.us"
         minSdk = 31
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"https://pingu-codu-api.libinfc0.workers.dev/\"")
