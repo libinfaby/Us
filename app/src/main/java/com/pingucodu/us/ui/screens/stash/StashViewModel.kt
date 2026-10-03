@@ -2,22 +2,12 @@ package com.pingucodu.us.ui.screens.stash
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.pingucodu.us.data.auth.AuthRepository
-import com.pingucodu.us.data.dates.DatesRepository
-import com.pingucodu.us.data.dates.SaveDateResult
-import com.pingucodu.us.data.money.AddMemoryResult
 import com.pingucodu.us.data.money.CreateHangoutResult
-import com.pingucodu.us.data.money.DeleteHangoutResult
-import com.pingucodu.us.data.money.DeleteMemoryResult
 import com.pingucodu.us.data.money.ExpenseRepository
 import com.pingucodu.us.data.money.HangoutsResult
-import com.pingucodu.us.data.money.UpdateHangoutResult
-import com.pingucodu.us.data.money.UpdateMemoryResult
 import com.pingucodu.us.data.network.HangoutDto
-import com.pingucodu.us.data.network.HangoutMemoryDto
 import com.pingucodu.us.data.network.LinkPreviewDto
 import com.pingucodu.us.data.network.SearchResultDto
-import com.pingucodu.us.data.network.SpecialDateRequest
 import com.pingucodu.us.data.network.StashItemDto
 import com.pingucodu.us.data.network.StashItemRequest
 import com.pingucodu.us.data.stash.AddStashItemResult
@@ -29,7 +19,6 @@ import com.pingucodu.us.data.stash.StashRepository
 import com.pingucodu.us.data.stash.StashTagsResult
 import com.pingucodu.us.data.stash.ToggleStashItemResult
 import com.pingucodu.us.data.stash.UpdateStashItemResult
-import com.pingucodu.us.ui.screens.dates.KIND_COUNTDOWN
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,7 +45,6 @@ val LINK_PREVIEW_TYPES = setOf("movie", "book", "place")
 /** Stash types that can be looked up by name with the form's "find" button. */
 val SEARCHABLE_TYPES = setOf("movie", "book")
 
-const val HANGOUTS_CATEGORY = "hangouts"
 const val ALL_CATEGORY = "all"
 private const val PAGE_SIZE = 10
 
@@ -70,7 +58,6 @@ data class StashUiState(
     val isLoadingMore: Boolean = false,
     val endReached: Boolean = false,
     val loadMoreFailed: Boolean = false,
-    val currentUsername: String? = null,
     val errorMessage: String? = null,
     val showAddDialog: Boolean = false,
     val editingItem: StashItemDto? = null,
@@ -88,21 +75,10 @@ data class StashUiState(
     val isSearching: Boolean = false,
     val searchError: String? = null,
 
+    /** For the hangout name on each card and the add sheet's hangout picker. */
     val hangouts: List<HangoutDto> = emptyList(),
-    val hangoutsLoaded: Boolean = false,
-    val hangoutsLoading: Boolean = false,
-    val showHangoutDialog: Boolean = false,
-    val editingHangout: HangoutDto? = null,
-    val hangoutDialogError: String? = null,
-    val isHangoutSubmitting: Boolean = false,
-
-    val memoryDialogHangout: HangoutDto? = null,
-    val editingMemory: HangoutMemoryDto? = null,
-    val memoryDialogError: String? = null,
-    val isMemorySubmitting: Boolean = false,
 ) {
-    val typeFilter: String? get() = if (category == ALL_CATEGORY || category == HANGOUTS_CATEGORY) null else category
-    val isHangoutCategory: Boolean get() = category == HANGOUTS_CATEGORY
+    val typeFilter: String? get() = if (category == ALL_CATEGORY) null else category
 
     /** Tags that can narrow the current category - every tag under "all", else just that type's -
      * alphabetical, so a tag is easy to find in the filter row. */
@@ -114,8 +90,6 @@ data class StashUiState(
 class StashViewModel @Inject constructor(
     private val stashRepository: StashRepository,
     private val expenseRepository: ExpenseRepository,
-    private val datesRepository: DatesRepository,
-    authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(StashUiState())
@@ -124,15 +98,8 @@ class StashViewModel @Inject constructor(
     private var itemsJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            authRepository.loggedInUsername.collect { username ->
-                _uiState.update { it.copy(currentUsername = username) }
-            }
-        }
         refresh()
         refreshAllTags()
-        // Cards show the name of the hangout they belong to, and the add sheet lists them.
-        refreshHangouts()
     }
 
     fun setCategory(category: String) {
@@ -144,12 +111,7 @@ class StashViewModel @Inject constructor(
             val next = it.copy(category = category, items = emptyList())
             next.copy(tag = it.tag?.takeIf { tag -> tag in next.filterTags })
         }
-        if (category == HANGOUTS_CATEGORY) {
-            // Always refetch: expenses added on the Money screen show up on the cards too.
-            refreshHangouts()
-        } else {
-            refresh()
-        }
+        refresh()
     }
 
     /** Tapping the selected tag again clears it. */
@@ -196,7 +158,7 @@ class StashViewModel @Inject constructor(
     /** Appends the next page - called as the list nears its bottom, Instagram-style. */
     fun loadMore() {
         val state = _uiState.value
-        if (state.isHangoutCategory || state.endReached || state.isLoading || state.isLoadingMore) return
+        if (state.endReached || state.isLoading || state.isLoadingMore) return
         if (itemsJob?.isActive == true) return
         itemsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingMore = true, loadMoreFailed = false) }
@@ -242,14 +204,13 @@ class StashViewModel @Inject constructor(
         }
     }
 
+    /** Cards show the name of the hangout they belong to, and the add sheet lists them. Quiet on
+     * failure - it's only names, and the items list reports its own errors. */
     fun refreshHangouts() {
         viewModelScope.launch {
-            _uiState.update { it.copy(hangoutsLoading = true, errorMessage = null) }
             when (val result = expenseRepository.getHangouts()) {
-                is HangoutsResult.Success ->
-                    _uiState.update { it.copy(hangoutsLoading = false, hangoutsLoaded = true, hangouts = result.hangouts) }
-                is HangoutsResult.NetworkError ->
-                    _uiState.update { it.copy(hangoutsLoading = false, errorMessage = result.message) }
+                is HangoutsResult.Success -> _uiState.update { it.copy(hangouts = result.hangouts) }
+                is HangoutsResult.NetworkError -> Unit
             }
         }
     }
@@ -451,14 +412,6 @@ class StashViewModel @Inject constructor(
         }
     }
 
-    fun openAddHangoutDialog() {
-        _uiState.update { it.copy(showHangoutDialog = true, editingHangout = null, hangoutDialogError = null) }
-    }
-
-    fun openEditHangoutDialog(hangout: HangoutDto) {
-        _uiState.update { it.copy(showHangoutDialog = true, editingHangout = hangout, hangoutDialogError = null) }
-    }
-
     /** "+ new" in the add sheet's hangout picker: creates it and hands it back to be selected. */
     suspend fun createHangoutAndReturn(name: String): HangoutDto? {
         return when (val result = expenseRepository.createHangout(name)) {
@@ -469,117 +422,6 @@ class StashViewModel @Inject constructor(
             is CreateHangoutResult.NetworkError -> {
                 _uiState.update { it.copy(dialogError = result.message) }
                 null
-            }
-        }
-    }
-
-    fun dismissHangoutDialog() {
-        _uiState.update { it.copy(showHangoutDialog = false, editingHangout = null, hangoutDialogError = null) }
-    }
-
-    /** [countdownDate] non-null = also add a countdown to that date once the new hangout is saved. */
-    fun submitHangout(name: String, startDate: String?, endDate: String?, countdownDate: String? = null) {
-        val editing = _uiState.value.editingHangout
-        viewModelScope.launch {
-            _uiState.update { it.copy(isHangoutSubmitting = true, hangoutDialogError = null) }
-            if (editing == null) {
-                when (val result = expenseRepository.createHangout(name, startDate, endDate)) {
-                    is CreateHangoutResult.Success -> {
-                        val countdownError = countdownDate?.let { addCountdown(name, it) }
-                        _uiState.update { it.copy(isHangoutSubmitting = false) }
-                        dismissHangoutDialog()
-                        refreshHangouts()
-                        // After the refresh, which clears errorMessage when it starts.
-                        if (countdownError != null) {
-                            _uiState.update { it.copy(errorMessage = "hangout saved, but the countdown wasn't: $countdownError") }
-                        }
-                    }
-                    is CreateHangoutResult.NetworkError ->
-                        _uiState.update { it.copy(isHangoutSubmitting = false, hangoutDialogError = result.message) }
-                }
-            } else {
-                when (val result = expenseRepository.updateHangout(editing.id, name, startDate, endDate)) {
-                    is UpdateHangoutResult.Success -> {
-                        _uiState.update { it.copy(isHangoutSubmitting = false) }
-                        dismissHangoutDialog()
-                        refreshHangouts()
-                    }
-                    is UpdateHangoutResult.ValidationError ->
-                        _uiState.update { it.copy(isHangoutSubmitting = false, hangoutDialogError = result.message) }
-                    is UpdateHangoutResult.NetworkError ->
-                        _uiState.update { it.copy(isHangoutSubmitting = false, hangoutDialogError = result.message) }
-                }
-            }
-        }
-    }
-
-    /** Returns the error message, or null when the countdown was added. */
-    private suspend fun addCountdown(title: String, date: String): String? =
-        when (val result = datesRepository.saveDate(null, SpecialDateRequest(kind = KIND_COUNTDOWN, title = title, date = date))) {
-            is SaveDateResult.Success -> null
-            is SaveDateResult.ValidationError -> result.message
-            is SaveDateResult.NetworkError -> result.message
-        }
-
-    fun deleteHangout(id: String) {
-        viewModelScope.launch {
-            when (val result = expenseRepository.deleteHangout(id)) {
-                DeleteHangoutResult.Success -> refreshHangouts()
-                is DeleteHangoutResult.NetworkError -> _uiState.update { it.copy(errorMessage = result.message) }
-            }
-        }
-    }
-
-    fun openAddMemoryDialog(hangout: HangoutDto) {
-        _uiState.update { it.copy(memoryDialogHangout = hangout, editingMemory = null, memoryDialogError = null) }
-    }
-
-    fun openEditMemoryDialog(hangout: HangoutDto, memory: HangoutMemoryDto) {
-        _uiState.update { it.copy(memoryDialogHangout = hangout, editingMemory = memory, memoryDialogError = null) }
-    }
-
-    fun dismissMemoryDialog() {
-        _uiState.update { it.copy(memoryDialogHangout = null, editingMemory = null, memoryDialogError = null) }
-    }
-
-    fun submitMemory(text: String) {
-        val hangout = _uiState.value.memoryDialogHangout ?: return
-        val editing = _uiState.value.editingMemory
-        viewModelScope.launch {
-            _uiState.update { it.copy(isMemorySubmitting = true, memoryDialogError = null) }
-            if (editing == null) {
-                when (val result = expenseRepository.addMemory(hangout.id, text)) {
-                    is AddMemoryResult.Success -> {
-                        _uiState.update { it.copy(isMemorySubmitting = false) }
-                        dismissMemoryDialog()
-                        refreshHangouts()
-                    }
-                    is AddMemoryResult.ValidationError ->
-                        _uiState.update { it.copy(isMemorySubmitting = false, memoryDialogError = result.message) }
-                    is AddMemoryResult.NetworkError ->
-                        _uiState.update { it.copy(isMemorySubmitting = false, memoryDialogError = result.message) }
-                }
-            } else {
-                when (val result = expenseRepository.updateMemory(hangout.id, editing.id, text)) {
-                    is UpdateMemoryResult.Success -> {
-                        _uiState.update { it.copy(isMemorySubmitting = false) }
-                        dismissMemoryDialog()
-                        refreshHangouts()
-                    }
-                    is UpdateMemoryResult.ValidationError ->
-                        _uiState.update { it.copy(isMemorySubmitting = false, memoryDialogError = result.message) }
-                    is UpdateMemoryResult.NetworkError ->
-                        _uiState.update { it.copy(isMemorySubmitting = false, memoryDialogError = result.message) }
-                }
-            }
-        }
-    }
-
-    fun deleteMemory(hangoutId: String, memoryId: String) {
-        viewModelScope.launch {
-            when (val result = expenseRepository.deleteMemory(hangoutId, memoryId)) {
-                DeleteMemoryResult.Success -> refreshHangouts()
-                is DeleteMemoryResult.NetworkError -> _uiState.update { it.copy(errorMessage = result.message) }
             }
         }
     }

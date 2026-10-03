@@ -59,6 +59,7 @@ import com.pingucodu.us.ui.auth.AuthStatus
 import com.pingucodu.us.ui.auth.AuthViewModel
 import com.pingucodu.us.ui.screens.cycle.CycleScreen
 import com.pingucodu.us.ui.screens.dates.DatesScreen
+import com.pingucodu.us.ui.screens.hangouts.HangoutsScreen
 import com.pingucodu.us.ui.screens.home.HomeScreen
 import com.pingucodu.us.ui.screens.login.LoginScreen
 import com.pingucodu.us.ui.screens.money.MoneyScreen
@@ -200,6 +201,7 @@ private fun MainScreen(
                     }
                 }
                 composable(Tab.Cycle.route) { TabFrame(Tab.Cycle) { CycleScreen() } }
+                composable(Tab.Hangouts.route) { TabFrame(Tab.Hangouts) { HangoutsScreen() } }
                 composable(Tab.Stash.route) {
                     TabFrame(Tab.Stash) {
                         StashScreen(sharedUrl = stashSharedUrl, onSharedUrlConsumed = { stashSharedUrl = null })
